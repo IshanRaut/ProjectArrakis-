@@ -1,0 +1,648 @@
+```json
+{
+  "rationale": "This presentation aims to highlight the economic significance of Ganesh Chaturthi in India, focusing on the local businesses that contribute to the festival. The design emphasizes visual richness, readability, and a celebratory tone appropriate for the audience and topic. The palette is inspired by traditional Indian festival colors, incorporating gold, saffron, and deep blues. The layout uses spacious hierarchy and card-like elements, similar to the Sales Kickoff reference, but adapted for festival content. CAIT's projections are clearly labeled as estimates, and uncertainties are acknowledged. The story flows from an introduction to the festival's scale, then delves into specific economic contributions, individual mandal budgets, and concludes with a summary and sources.",
+  "palette": {
+    "dark_blue": "#1A237E",
+    "gold": "#FFD700",
+    "saffron": "#FF9800",
+    "white": "#FFFFFF",
+    "light_gray": "#F5F5F5",
+    "accent_orange": "#FF5722"
+  },
+  "slides": [
+    {
+      "background": "dark_blue",
+      "intent": "Title slide introducing the economic impact of Ganesh Chaturthi, setting a vibrant and celebratory tone.",
+      "elements": [
+        {
+          "type": "text",
+          "text": "The Festive Economy:",
+          "x": 0.75,
+          "y": 1.5,
+          "w": 11.833,
+          "h": 0.7,
+          "pt": 48,
+          "color": "white",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Ganesh Chaturthi's Impact",
+          "x": 0.75,
+          "y": 2.2,
+          "w": 11.833,
+          "h": 1.0,
+          "pt": 60,
+          "color": "gold",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Celebrating Faith, Fueling Local Businesses",
+          "x": 0.75,
+          "y": 3.5,
+          "w": 11.833,
+          "h": 0.5,
+          "pt": 28,
+          "color": "saffron",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "image",
+          "asset": "idol_gold",
+          "x": 8.0,
+          "y": 0.0,
+          "w": 5.333,
+          "h": 7.5,
+          "focus": [
+            0.5,
+            0.5
+          ]
+        }
+      ]
+    },
+    {
+      "background": "light_gray",
+      "intent": "Overview of the festival's scale and its significant economic contribution, using a strong visual.",
+      "elements": [
+        {
+          "type": "image",
+          "asset": "idol_stage",
+          "x": 0.0,
+          "y": 0.0,
+          "w": 7.0,
+          "h": 7.5,
+          "focus": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "type": "text",
+          "text": "A Festival of Grandeur and Growth",
+          "x": 7.5,
+          "y": 0.75,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 36,
+          "color": "dark_blue",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Ganesh Chaturthi is not just a spiritual celebration; it's a major economic driver for local communities across India.",
+          "x": 7.5,
+          "y": 1.8,
+          "w": 5.0,
+          "h": 1.0,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "box",
+          "x": 7.5,
+          "y": 3.1,
+          "w": 5.0,
+          "h": 2.0,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "CAIT projects festival-linked business of over",
+          "x": 7.75,
+          "y": 3.3,
+          "w": 4.5,
+          "h": 0.5,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "₹30,000 Crore",
+          "x": 7.75,
+          "y": 3.8,
+          "w": 4.5,
+          "h": 0.8,
+          "pt": 48,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "across India for 2025.",
+          "x": 7.75,
+          "y": 4.6,
+          "w": 4.5,
+          "h": 0.4,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "*CAIT projections are trade estimates, not audited totals.",
+          "x": 7.5,
+          "y": 5.3,
+          "w": 5.0,
+          "h": 0.3,
+          "pt": 14,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        }
+      ]
+    },
+    {
+      "background": "dark_blue",
+      "intent": "Highlighting the sheer scale of public celebrations and their geographical spread.",
+      "elements": [
+        {
+          "type": "text",
+          "text": "A Nationwide Celebration",
+          "x": 0.75,
+          "y": 0.75,
+          "w": 11.833,
+          "h": 0.8,
+          "pt": 40,
+          "color": "white",
+          "bold": true,
+          "align": "center"
+        },
+        {
+          "type": "box",
+          "x": 1.0,
+          "y": 2.0,
+          "w": 5.5,
+          "h": 4.5,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "Over 20 Lakh Public Pandals",
+          "x": 1.25,
+          "y": 2.5,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 36,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Nationally",
+          "x": 1.25,
+          "y": 3.3,
+          "w": 5.0,
+          "h": 0.4,
+          "pt": 24,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Each pandal represents a hub of economic activity, from idol makers to decorators.",
+          "x": 1.25,
+          "y": 4.0,
+          "w": 5.0,
+          "h": 1.0,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "box",
+          "x": 6.833,
+          "y": 2.0,
+          "w": 5.5,
+          "h": 4.5,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "~7 Lakh Pandals",
+          "x": 7.083,
+          "y": 2.5,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 36,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "in Maharashtra Alone",
+          "x": 7.083,
+          "y": 3.3,
+          "w": 5.0,
+          "h": 0.4,
+          "pt": 24,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Maharashtra, the birthplace of the public Ganesh festival, leads in scale and economic contribution.",
+          "x": 7.083,
+          "y": 4.0,
+          "w": 5.0,
+          "h": 1.0,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "*CAIT estimates, categories may overlap.",
+          "x": 1.0,
+          "y": 6.7,
+          "w": 11.333,
+          "h": 0.3,
+          "pt": 14,
+          "color": "white",
+          "bold": false,
+          "align": "left"
+        }
+      ]
+    },
+    {
+      "background": "light_gray",
+      "intent": "Detailing the key economic categories and their estimated contributions.",
+      "elements": [
+        {
+          "type": "text",
+          "text": "Key Economic Pillars",
+          "x": 0.75,
+          "y": 0.75,
+          "w": 11.833,
+          "h": 0.8,
+          "pt": 40,
+          "color": "dark_blue",
+          "bold": true,
+          "align": "center"
+        },
+        {
+          "type": "box",
+          "x": 0.75,
+          "y": 2.0,
+          "w": 3.5,
+          "h": 4.0,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "Pandal Setup, Decor & Puja",
+          "x": 1.0,
+          "y": 2.25,
+          "w": 3.0,
+          "h": 0.8,
+          "pt": 24,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Estimated at",
+          "x": 1.0,
+          "y": 3.2,
+          "w": 3.0,
+          "h": 0.4,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "₹12,000 Crore",
+          "x": 1.0,
+          "y": 3.6,
+          "w": 3.0,
+          "h": 0.8,
+          "pt": 36,
+          "color": "accent_orange",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Idols, flowers, lighting, sound systems, and traditional puja items.",
+          "x": 1.0,
+          "y": 4.5,
+          "w": 3.0,
+          "h": 1.0,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "box",
+          "x": 4.916,
+          "y": 2.0,
+          "w": 3.5,
+          "h": 4.0,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "Event Management",
+          "x": 5.166,
+          "y": 2.25,
+          "w": 3.0,
+          "h": 0.8,
+          "pt": 24,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Estimated at",
+          "x": 5.166,
+          "y": 3.2,
+          "w": 3.0,
+          "h": 0.4,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "₹5,000 Crore",
+          "x": 5.166,
+          "y": 3.6,
+          "w": 3.0,
+          "h": 0.8,
+          "pt": 36,
+          "color": "accent_orange",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Logistics, security, entertainment, and cultural programs.",
+          "x": 5.166,
+          "y": 4.5,
+          "w": 3.0,
+          "h": 1.0,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "box",
+          "x": 9.083,
+          "y": 2.0,
+          "w": 3.5,
+          "h": 4.0,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "Food and Sweets",
+          "x": 9.333,
+          "y": 2.25,
+          "w": 3.0,
+          "h": 0.8,
+          "pt": 24,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Estimated at",
+          "x": 9.333,
+          "y": 3.2,
+          "w": 3.0,
+          "h": 0.4,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "₹2,400 Crore",
+          "x": 9.333,
+          "y": 3.6,
+          "w": 3.0,
+          "h": 0.8,
+          "pt": 36,
+          "color": "accent_orange",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Traditional modaks, laddoos, and other festive delicacies.",
+          "x": 9.333,
+          "y": 4.5,
+          "w": 3.0,
+          "h": 1.0,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "*CAIT estimates for 2025; categories may overlap.",
+          "x": 0.75,
+          "y": 6.2,
+          "w": 11.833,
+          "h": 0.3,
+          "pt": 14,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        }
+      ]
+    },
+    {
+      "background": "dark_blue",
+      "intent": "Showcasing the significant budgets of individual mandals, illustrating direct local spending.",
+      "elements": [
+        {
+          "type": "text",
+          "text": "Mandal Budgets: Local Impact",
+          "x": 0.75,
+          "y": 0.75,
+          "w": 11.833,
+          "h": 0.8,
+          "pt": 40,
+          "color": "white",
+          "bold": true,
+          "align": "center"
+        },
+        {
+          "type": "box",
+          "x": 0.75,
+          "y": 2.0,
+          "w": 5.5,
+          "h": 4.5,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "Shree Tulshibaug Ganesh Mandal, Pune",
+          "x": 1.0,
+          "y": 2.25,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 28,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Budget for 2025 Festival:",
+          "x": 1.0,
+          "y": 3.2,
+          "w": 5.0,
+          "h": 0.4,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "₹1.5 – 2 Crore",
+          "x": 1.0,
+          "y": 3.6,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 48,
+          "color": "accent_orange",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "A significant investment in local artisans, vendors, and services.",
+          "x": 1.0,
+          "y": 4.5,
+          "w": 5.0,
+          "h": 1.0,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "box",
+          "x": 7.083,
+          "y": 2.0,
+          "w": 5.5,
+          "h": 4.5,
+          "fill": "white",
+          "rounded": true
+        },
+        {
+          "type": "text",
+          "text": "GSB Seva Mandal, Mumbai",
+          "x": 7.333,
+          "y": 2.25,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 28,
+          "color": "saffron",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "Typical Whole-Festival Spend:",
+          "x": 7.333,
+          "y": 3.2,
+          "w": 5.0,
+          "h": 0.4,
+          "pt": 20,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "₹7 – 8 Crore",
+          "x": 7.333,
+          "y": 3.6,
+          "w": 5.0,
+          "h": 0.8,
+          "pt": 48,
+          "color": "accent_orange",
+          "bold": true,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "One of the richest mandals, contributing substantially to the festival economy.",
+          "x": 7.333,
+          "y": 4.5,
+          "w": 5.0,
+          "h": 1.0,
+          "pt": 18,
+          "color": "dark_blue",
+          "bold": false,
+          "align": "left"
+        },
+        {
+          "type": "text",
+          "text": "*Mandal budgets are reported figures, not CAIT estimates.",
+          "x": 0.75,
+          "y": 6.7,
+          "w": 11.833,
+          "h": 0.3,
+          "pt": 14,
+          "color": "white",
+          "bold": false,
+          "align": "left"
+        }
+      ]
+    },
+    {
+      "background": "light_gray",
+      "intent": "Summarizing the overall impact and reinforcing the festival's economic significance.",
+      "elements": [
+        {
+          "type": "image",
+          "asset": "pandal",
+          "x": 6.333,
+          "y": 0.0,
+          "w": 7.0,
+          "h": 7.5,
+          "focus": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "type

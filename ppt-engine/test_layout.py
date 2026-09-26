@@ -176,6 +176,34 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(len(plan['slides']),6)
         self.assertEqual(len(plan['slides'][0]['elements']),5)
         self.assertEqual(plan['slides'][0]['elements'][0]['type'],'image')
+    def test_structured_planner_schema_and_provider_requirement(self):
+        import engine,json,os,io
+        from unittest.mock import patch
+        schema=engine.planner_response_format()
+        self.assertEqual(schema['type'],'json_schema')
+        self.assertTrue(schema['json_schema']['strict'])
+        props=schema['json_schema']['schema']['properties']['slides']['items']['properties']['elements']['items']['properties']
+        self.assertEqual(props['type']['enum'],['text','box','image'])
+        self.assertIn('focus',props)
+        class Response:
+            def __init__(self):self.body=io.BytesIO(json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'{}'}}],'usage':{}}).encode())
+            def read(self,*args):return self.body.read(*args)
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+        with patch.dict(os.environ,{'OPENROUTER_API_KEY':'mock'}),patch.object(engine.urllib.request,'urlopen',return_value=Response()) as call:
+            engine.chat([], 'google/gemini-2.5-flash', response_format=schema)
+            payload=json.loads(call.call_args.args[0].data)
+            self.assertEqual(payload['response_format'],schema)
+            self.assertEqual(payload['provider'],{'require_parameters':True})
+    def test_all_three_failed_payload_classes(self):
+        import engine,json
+        from pathlib import Path
+        fixture=Path(__file__).parent/'fixtures'
+        with self.assertRaises(ValueError):engine.parse_json((fixture/'truncated-planner.txt').read_text())
+        p=engine.normalize_plan_schema(engine.parse_json((fixture/'gemini-malformed-planner.txt').read_text()))
+        self.assertEqual(len(p['slides']),6)
+        with self.assertRaisesRegex(ValueError,'nested element type mismatch'):
+            engine.normalize_plan_schema(engine.parse_json((fixture/'gemini-role-wrapped-planner.txt').read_text()))
     def test_unknown_nested_schema_rejected(self):
         import engine
         with self.assertRaisesRegex(ValueError,'unknown element schema'):

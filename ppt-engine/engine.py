@@ -15,7 +15,29 @@ from layout import repair,validate
 API='https://openrouter.ai/api/v1/chat/completions'
 MAX_OUTPUT_TOKENS=6500
 
-def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None):
+def planner_response_format():
+    """Constrain shape, not composition. The model still chooses every slide."""
+    color={'type':'string','description':'RGB hex or a key from palette'}
+    num={'type':'number'}
+    element={'type':'object','properties':{
+        'type':{'type':'string','enum':['text','box','image']},
+        'x':num,'y':num,'w':num,'h':num,
+        'text':{'type':'string'},'pt':num,'color':color,
+        'bold':{'type':'boolean'},'align':{'type':'string','enum':['left','center','right']},
+        'fill':color,'rounded':{'type':'boolean'},
+        'asset':{'type':'string'},'focus':{'type':'array','items':num,'minItems':2,'maxItems':2}
+    },'required':['type','x','y','w','h'],'additionalProperties':False}
+    slide={'type':'object','properties':{
+        'background':color,'intent':{'type':'string'},
+        'elements':{'type':'array','items':element,'minItems':1,'maxItems':12}
+    },'required':['background','elements'],'additionalProperties':False}
+    schema={'type':'object','properties':{
+        'palette':{'type':'object','additionalProperties':{'type':'string'}},
+        'slides':{'type':'array','items':slide,'minItems':1,'maxItems':8}
+    },'required':['palette','slides'],'additionalProperties':False}
+    return {'type':'json_schema','json_schema':{'name':'project_arrakis_deck_plan','strict':True,'schema':schema}}
+
+def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None,response_format=None):
     key=os.environ.get('OPENROUTER_API_KEY','')
     if not key:raise RuntimeError('OPENROUTER_API_KEY not set; provide it in the VPS process environment, not on the command line')
     payload={'model':model,'messages':messages,'temperature':.5,'max_tokens':max_tokens}
@@ -23,6 +45,9 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None)
     # leaves room for the complete visual plan instead of truncating its JSON.
     if model=='nvidia/nemotron-3-super-120b-a12b:free':
         payload['reasoning']={'effort':'low'}
+    if response_format is not None:
+        payload['response_format']=response_format
+        payload['provider']={'require_parameters':True}
     body=json.dumps(payload,ensure_ascii=False).encode()
     req=urllib.request.Request(base_url,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'ProjectArrakis presentation engine'})
     # No implicit paid retry. Persist provider usage even for truncated plans.
@@ -279,7 +304,7 @@ def run(args):
     for a in assets.values():
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=9500 if args.model.endswith(':free') else 7000,raw_path=out/'raw-planner.json')
+    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=9500 if args.model.endswith(':free') else 7000,raw_path=out/'raw-planner.json',response_format=planner_response_format() if args.model=='google/gemini-2.5-flash' else None)
     plan=normalize_plan_schema(parse_json(response))
     bad_urls=validate_source_urls(plan,reference)
     if bad_urls:raise ValueError('source URLs not copied verbatim: '+json.dumps(bad_urls))
