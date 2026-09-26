@@ -43,6 +43,7 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(q['slides'][0]['elements'][0]['x'],2)
         self.assertEqual(q['slides'][0]['elements'][1],p['slides'][0]['elements'][1])
         self.assertEqual(p['slides'][0]['elements'][0]['x'],1)
+        self.assertEqual(engine.apply_patches(p,[{'slide':1,'element':99,'changes':{'x':3}}]),p)
     def test_bounds_overlap(self):
         p={'slides':[{'elements':[{'type':'text','text':'A','x':12,'y':.1,'w':2,'h':1,'pt':24},{'type':'text','text':'B','x':1,'y':1,'w':3,'h':1,'pt':24},{'type':'text','text':'C','x':2,'y':1,'w':3,'h':1,'pt':24}]}]}
         kinds={x['kind'] for x in validate(p)}

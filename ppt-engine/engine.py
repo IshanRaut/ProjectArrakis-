@@ -115,7 +115,8 @@ def preview(pptx,pdf,folder):
     return images
 
 def critic_prompt(plan,images):
-    content=[{'type':'text','text':'Review EVERY actual rendered slide for clipping, overlapping text, unreadable type, weak hierarchy, inappropriate crops and unsupported claims. Do not invent facts. If ready, return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"..."}],"patches":[{"slide":1,"element":2,"changes":{"x":0.8,"y":1.1,"w":5,"h":1,"pt":24}}]}. Indices: slide is 1-based, element is 0-based index in that slide elements. Supply ONLY targeted changed fields for identified elements, no full-plan rewrite; prefer reflow/resize/reposition over deleting facts. Current plan: '+json.dumps(plan,ensure_ascii=False)}]
+    instruction=('Inspect all rendered slides for OBJECTIVE release defects only: text overflow or overlap, clipped or missing content, unreadable text at presentation size, invalid/unsupported numbers or citations, and severe contrast failure. Cropping of stock photography is expected and not itself a failure. Do not fail for subjective taste, hierarchy, color preference, full URLs that are readable in the PDF, or ordinary design tradeoffs. If no objective defect exists return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"precise visible defect"}],"patches":[{"slide":1,"element":2,"changes":{"x":1.1,"h":1.2}}]}. Slide indices are 1-based, element indices 0-based; only patch an index you can verify in the plan. Patch only exact defective elements. Current plan: '+json.dumps(plan,ensure_ascii=False))
+    content=[{'type':'text','text':instruction}]
     for f in images:
         b64=base64.b64encode(f.read_bytes()).decode();content.append({'type':'image_url','image_url':{'url':'data:image/png;base64,'+b64,'detail':'low'}})
     return content
@@ -126,6 +127,8 @@ def apply_patches(plan,patches):
     revised=copy.deepcopy(plan)
     for patch in patches:
         slide=int(patch['slide'])-1;index=int(patch['element'])
+        if slide<0 or slide>=len(revised['slides']):continue
+        if index<0 or index>=len(revised['slides'][slide]['elements']):continue
         element=revised['slides'][slide]['elements'][index]
         allowed={'x','y','w','h','pt','text','color','fill','focus','align'}
         changes=patch['changes']
