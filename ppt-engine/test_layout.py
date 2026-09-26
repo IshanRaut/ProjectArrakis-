@@ -50,6 +50,14 @@ class LayoutTests(unittest.TestCase):
         self.assertIn('card_overflow',{i['kind'] for i in validate(p)})
         fixed,_,issues=repair(p)
         self.assertTrue(issues)  # no valid vertical room: do not silently crop
+    def test_source_row_reflows_without_dropping_url(self):
+        p={'slides':[{'elements':[{'type':'text','text':'Sources','x':.5,'y':.5,'w':12,'h':.6,'pt':24},
+           {'type':'text','text':'Source https://cait.in/a-long-url-with-projection','x':.5,'y':1.3,'w':12,'h':.4,'pt':12},
+           {'type':'text','text':'CAIT 2024 estimate','x':.5,'y':1.8,'w':12,'h':.4,'pt':12}]}]}
+        fixed,changes,issues=repair(p)
+        self.assertFalse(issues)
+        self.assertEqual(fixed['slides'][0]['elements'][1]['text'],p['slides'][0]['elements'][1]['text'])
+        self.assertTrue(any(c['kind']=='downstream_text_reflow' for c in changes) or not validate(p))
     def test_unsupported_growth_claim(self):
         import engine
         p={'slides':[{'elements':[{'type':'text','text':'The economic impact continues to grow.'}]}]}

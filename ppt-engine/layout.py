@@ -146,6 +146,17 @@ def repair(plan,passes=5):
                 e['h']=max(float(e['h']),min(desired,ceiling))
                 need,_=measure(e['text'],float(e['pt']),float(e['w']),bool(e.get('bold')))
                 if need>e['h']+.02:
+                    # A short card/source row can be reflowed down into empty
+                    # slide space rather than shrinking below readable type.
+                    delta=round(need-float(e['h'])+.06,3)
+                    following=[o for j,o in enumerate(p['slides'][si]['elements'])
+                               if j!=ei and o.get('type')=='text' and o['y']>=e['y']+e['h']-.001]
+                    shifted=[(o,o['y']+delta) for o in following]
+                    if following and delta<=.52 and (float(e['y'])>=1.2 or all(o['pt']<=15 for o in following)) and all(new_y+o['h']<=H-.18 for o,new_y in shifted):
+                        for o,new_y in shifted:o['y']=round(new_y,3)
+                        e['h']=round(float(e['h'])+delta,3)
+                        changes.append({'slide':si+1,'element':ei,'kind':'downstream_text_reflow','delta':delta})
+                if need>e['h']+.02:
                     floor=10 if ('source' in e['text'].lower() or 'http' in e['text'].lower()) else 15
                     pt=float(e['pt'])
                     while pt>floor and need>e['h']+.02:
