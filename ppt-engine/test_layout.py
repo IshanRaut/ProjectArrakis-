@@ -87,6 +87,28 @@ class LayoutTests(unittest.TestCase):
             self.assertTrue(any(i['kind']=='text_image_overlap' and i['slide']==3 for i in issues))
         else:
             self.skipTest('live plan not retained in scratch')
+    def test_actual_card_caption_violation_repaired(self):
+        import json
+        from pathlib import Path
+        example=Path('/tmp/arrakis-structured-paid-run3/plan-0.json')
+        if not example.exists():self.skipTest('prior plan unavailable')
+        plan=json.loads(example.read_text())
+        # The violation emerges after lead-copy fit repair; raw plan itself
+        # cannot predict the exact shifted captions.
+        self.assertTrue(validate(plan))
+        fixed,changes,issues=repair(plan)
+        self.assertFalse(issues,issues)
+        for i in (4,7):
+            before=plan['slides'][4]['elements'][i];after=fixed['slides'][4]['elements'][i]
+            self.assertEqual(after['text'],before['text'])
+            self.assertGreaterEqual(after['y'],before['y']-.35)
+        self.assertTrue(changes)
+    def test_micro_nudge_cannot_escape_card(self):
+        p={'slides':[{'elements':[{'type':'box','x':.6,'y':1,'w':8,'h':2,'fill':'FFFFFF'},
+          {'type':'text','text':'Short source caption','x':1,'y':2.55,'w':7,'h':.31,'pt':12}]}]}
+        fixed,_,issues=repair(p)
+        self.assertFalse(issues)
+        self.assertLessEqual(fixed['slides'][0]['elements'][1]['y']+fixed['slides'][0]['elements'][1]['h'],2.86)
     def test_generic_image_occlusion_and_overlap(self):
         image={'type':'image','asset':'test','x':0,'y':0,'w':13.333,'h':7.5}
         box={'type':'box','fill':'000000','x':0,'y':0,'w':13.333,'h':7.5}

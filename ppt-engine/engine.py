@@ -25,7 +25,7 @@ def planner_response_format():
     def optional(kind):return {'type':[kind,'null']}
     element={'type':'object','properties':{
         'type':{'type':'string','enum':['text','box','image']},
-        'x':number,'y':number,'w':number,'h':number,
+        'x':{'type':'number','description':'Left inches 0..13.333'},'y':{'type':'number','description':'Top inches 0..7.5'},'w':{'type':'number','description':'Width; x+w<=13.333'},'h':{'type':'number','description':'Height; y+h<=7.5; card text ends >=0.14in before card bottom'},
         'text':optional('string'),'pt':optional('number'),'color':optional('string'),
         'bold':optional('boolean'),'align':{'type':['string','null'],'enum':['left','center','right',None]},
         'fill':optional('string'),'rounded':optional('boolean'),
@@ -138,7 +138,7 @@ def prompt(brief,assets,reference):
         "image {type,asset,x,y,w,h} (optional focus). Omitted optional fields use renderer defaults. "
         "Coordinates numeric inches, positive, entirely inside canvas. Array order is layer order. "
         "Creative choices and narrative are yours, not a fixed template. Make distinctive compositions: intentional asymmetry, editorial typography, image-and-number pairings and negative space as the topic suits. Optional fields are optional, not slots to fill. Use different slide layouts when the story calls for them. Keep fonts readable (body >=17pt, sources >=10pt). "
-        "Give cards >=0.14in bottom inset for ALL text including captions; leave space for wrapped source notes. "
+        "Layout ruler: card text starts >=0.14in below card top and y+h <= card bottom-0.14in; keep >=0.08in between text blocks. Estimate wrapped height: at 18pt about 0.34in per line+0.12in; 24pt 0.44in per line+0.12in; 36pt 0.66in per line+0.12in. Long names/source lines wrap; leave slack under two-line captions. "
         "Use only supplied evidence and image asset IDs. Do not infer audited totals, measured growth/trends, or unsupported superlatives from trade projections. "
         "Label estimates on relevant slides; include complete source URLs on a sources slide. Photos are illustrative, not proof of figures. "
         "If requested format isn't PPTX/PDF return {\"unsupported_format\":\"...\"}.\n"

@@ -137,6 +137,10 @@ def repair(plan,passes=5):
             # positive. Prefer an actual bounded box extension if clear.
             if fault['kind']=='text_fit' and fault['need']-fault['have']<=.04:
                 spare=H-(e['y']+e['h'])-.015
+                containing=[b for b in p['slides'][si]['elements'] if b.get('type')=='box'
+                            and b['x']+.04<=e['x'] and e['x']+e['w']<=b['x']+b['w']-.04
+                            and b['y']+.04<=e['y'] and e['y']<=b['y']+b['h']]
+                if containing:spare=min(spare,min(b['y']+b['h']-.14-(e['y']+e['h']) for b in containing))
                 neighbors=[o for j,o in enumerate(p['slides'][si]['elements']) if j!=ei and o.get('type')=='text' and o['y']>=e['y']+e['h']-.001 and max(e['x'],o['x'])<min(e['x']+e['w'],o['x']+o['w'])]
                 if neighbors:spare=min(spare,min(o['y']-(e['y']+e['h'])-.03 for o in neighbors))
                 if spare>=fault['need']-fault['have']+.005:
@@ -150,26 +154,41 @@ def repair(plan,passes=5):
                 e['x']=max(.08,min(float(e['x']),W-.3));e['y']=max(.08,min(float(e['y']),H-.25))
                 e['w']=max(.2,min(float(e['w']),W-e['x']-.04));e['h']=max(.2,min(float(e['h']),H-e['y']-.04))
             elif fault['kind']=='card_overflow':
-                # Shrink the declared box only if the text still fits. Otherwise
-                # leave an actionable preflight failure, never hide text by clipping.
-                bottom=float(fault['card_bottom'])-.14
-                new_h=bottom-float(e['y'])
-                need,_=measure(e['text'],float(e['pt']),float(e['w']),bool(e.get('bold')))
-                if new_h>=need-.02:e['h']=round(new_h,3)
+                card=next((b for b in p['slides'][si]['elements'] if b.get('type')=='box'
+                           and abs(b['y']+b['h']-fault['card_bottom'])<.001
+                           and b['x']+.04<=e['x'] and e['x']+e['w']<=b['x']+b['w']-.04),None)
+                if card:
+                    bottom=float(fault['card_bottom'])-.14
+                    need,_=measure(e['text'],float(e['pt']),float(e['w']),bool(e.get('bold')))
+                    desired_h=max(need+.02,min(float(e['h']),bottom-float(e['y'])))
+                    e['h']=round(desired_h,3)
+                    delta=max(0,e['y']+e['h']-bottom+.005)
+                    if delta<=.35:
+                        upper=[o for j,o in enumerate(p['slides'][si]['elements'])
+                               if j!=ei and o.get('type')=='text' and o['y']<e['y']
+                               and max(e['x'],o['x'])<min(e['x']+e['w'],o['x']+o['w'])]
+                        min_y=max([card['y']+.14]+[o['y']+o['h']+.08 for o in upper])
+                        if e['y']-delta>=min_y:e['y']=round(float(e['y'])-delta,3)
             elif fault['kind']=='text_fit':
                 available=H-float(e['y'])-.08
                 # Expand a box into genuinely unoccupied vertical space first.
                 desired=min(available,float(fault['need'])+.08)
                 others=[o for j,o in enumerate(p['slides'][si]['elements']) if j!=ei and o.get('type')=='text' and max(e['x'],o['x'])<min(e['x']+e['w'],o['x']+o['w'])]
-                ceiling=min([o['y']-e['y']-.1 for o in others if o['y']>e['y']+.01] or [available])
+                nearby=[o['y']-e['y']-.1 for o in others if o['y']>e['y']+.01]
+                nearby += [o['y']-e['y']-.1 for o in p['slides'][si]['elements'] if o.get('type')=='box'
+                           and o['y']>e['y']+.01 and max(e['x'],o['x'])<min(e['x']+e['w'],o['x']+o['w'])]
+                ceiling=min(nearby or [available])
                 e['h']=max(float(e['h']),min(desired,ceiling))
                 need,_=measure(e['text'],float(e['pt']),float(e['w']),bool(e.get('bold')))
                 if need>e['h']+.02:
                     # A short card/source row can be reflowed down into empty
                     # slide space rather than shrinking below readable type.
                     delta=round(need-float(e['h'])+.06,3)
+                    containing_next=[b for b in p['slides'][si]['elements'] if b.get('type')=='box' and b['y']>=e['y']+e['h']-.001]
+                    next_card_top=min([b['y'] for b in containing_next] or [H])
                     following=[o for j,o in enumerate(p['slides'][si]['elements'])
-                               if j!=ei and o.get('type')=='text' and o['y']>=e['y']+e['h']-.001]
+                               if j!=ei and o.get('type')=='text' and o['y']>=e['y']+e['h']-.001
+                               and o['y']<next_card_top]
                     shifted=[(o,o['y']+delta) for o in following]
                     if following and delta<=.52 and (float(e['y'])>=1.2 or all(o['pt']<=15 for o in following)) and all(new_y+o['h']<=H-.18 for o,new_y in shifted):
                         for o,new_y in shifted:o['y']=round(new_y,3)
