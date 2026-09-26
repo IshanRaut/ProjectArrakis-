@@ -54,8 +54,31 @@ def intersection(a,b):
     return max(0,r-l)*max(0,bot-t)
 
 
+def normalize_colors(plan):
+    """Normalize model colors to the renderer's RGB-only contract."""
+    p=copy.deepcopy(plan)
+    palette=p.get('palette',{})
+    def rgb(v,default):
+        if isinstance(v,str):
+            raw=v.strip().lstrip('#')
+            if re.fullmatch(r'[0-9a-fA-F]{8}',raw):return raw[:6].upper()
+            if re.fullmatch(r'[0-9a-fA-F]{6}',raw):return raw.upper()
+            if v in palette:return v
+        return default
+    for k,v in list(palette.items()):palette[k]=rgb(v,'FFFFFF')
+    for slide in p.get('slides',[]):
+        slide['background']=rgb(slide.get('background'),'FFFFFF')
+        for e in slide.get('elements',[]):
+            if e.get('type')=='box':e['fill']=rgb(e.get('fill'),'FFFFFF')
+            if e.get('type')=='text':e['color']=rgb(e.get('color'),'222222')
+    return p
+
+
 def validate(plan):
     issues=[]
+    if len(plan.get('slides',[]))>8 or not plan.get('slides'):
+        issues.append({'kind':'slide_count','detail':'brief requires 1-8 slides'})
+
     for si,slide in enumerate(plan['slides']):
         texts=[]
         for ei,e in enumerate(slide['elements']):
@@ -74,12 +97,13 @@ def validate(plan):
 
 def repair(plan,passes=5):
     """Local, element-specific repairs, not another full-plan rewrite."""
-    p=copy.deepcopy(plan);changes=[]
+    p=normalize_colors(plan);changes=[]
     for _ in range(passes):
         faults=validate(p)
         if not faults:break
         progress=False
         for fault in faults:
+            if fault['kind']=='slide_count':continue
             si,ei=fault['slide'],fault['element'];e=p['slides'][si]['elements'][ei]
             before=(e.get('x'),e.get('y'),e.get('w'),e.get('h'),e.get('pt'))
             if fault['kind']=='bounds':

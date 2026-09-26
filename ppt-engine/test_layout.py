@@ -2,6 +2,14 @@ import unittest
 from layout import measure,validate,repair
 
 class LayoutTests(unittest.TestCase):
+    def test_color_and_slide_limit(self):
+        from layout import normalize_colors
+        p={'palette':{'dark':'11223380'},'slides':[{'background':'dark','elements':[{'type':'box','x':1,'y':1,'w':1,'h':1,'fill':'#00000080'}]}]}
+        q=normalize_colors(p)
+        self.assertEqual(q['palette']['dark'],'112233')
+        self.assertEqual(q['slides'][0]['elements'][0]['fill'],'000000')
+        p['slides']*=9
+        self.assertIn('slide_count',{i['kind'] for i in validate(p)})
     def test_measure_multiline_and_markup(self):
         a,_=measure('short',32,4)
         b,n=measure('<b>Long source label</b> ' * 8,32,4)
@@ -11,7 +19,7 @@ class LayoutTests(unittest.TestCase):
         self.assertTrue(validate(p))
         fixed,changes,issues=repair(p)
         self.assertFalse(issues,issues)
-        self.assertEqual(fixed['slides'][0]['elements'][1],p['slides'][0]['elements'][1])
+        self.assertEqual({k:v for k,v in fixed['slides'][0]['elements'][1].items() if k!='color'},p['slides'][0]['elements'][1])
         self.assertTrue(changes)
     def test_targeted_patch(self):
         import engine
