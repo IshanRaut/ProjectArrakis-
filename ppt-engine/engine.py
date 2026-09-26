@@ -21,7 +21,7 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None)
     body=json.dumps({'model':model,'messages':messages,'temperature':.5,'max_tokens':max_tokens},ensure_ascii=False).encode()
     req=urllib.request.Request(base_url,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'ProjectArrakis presentation engine'})
     last=None
-    for attempt in range(3):
+    for attempt in range(1):
         try:
             with urllib.request.urlopen(req,timeout=100) as res: ans=json.load(res)
             if raw_path:
@@ -30,7 +30,7 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None)
             return ans['choices'][0]['message']['content'],ans.get('usage',{})
         except Exception as exc:
             last=exc
-            if attempt<2:time.sleep(1.5*(attempt+1))
+            if attempt<0:time.sleep(1.5*(attempt+1))
     raise RuntimeError(f'Model call failed after retries: {last}')
 
 def parse_json(s):
