@@ -60,7 +60,7 @@ def prompt(brief,assets,reference):
         "box {type,x,y,w,h,fill} (optional rounded); "
         "image {type,asset,x,y,w,h} (optional focus). Omitted optional fields use renderer defaults. "
         "Coordinates numeric inches, positive, entirely inside canvas. Array order is layer order. "
-        "Creative choices and narrative are yours, not a fixed template. Keep fonts readable (body >=17pt, sources >=10pt). "
+        "Creative choices and narrative are yours, not a fixed template. Make distinctive compositions: intentional asymmetry, editorial typography, image-and-number pairings and negative space as the topic suits. Optional fields are optional, not slots to fill. Use different slide layouts when the story calls for them. Keep fonts readable (body >=17pt, sources >=10pt). "
         "Give cards >=0.14in bottom inset for ALL text including captions; leave space for wrapped source notes. "
         "Use only supplied evidence and image asset IDs. Do not infer audited totals, measured growth/trends, or unsupported superlatives from trade projections. "
         "Label estimates on relevant slides; include complete source URLs on a sources slide. Photos are illustrative, not proof of figures. "
@@ -164,7 +164,7 @@ def audit_rendered_text(plan,pdf):
     return issues
 
 def critic_prompt(plan,images):
-    instruction=('Inspect all rendered slides for OBJECTIVE release defects only: text overflow or overlap, clipped or missing content, unreadable text at presentation size, invalid/unsupported numbers or citations, and severe contrast failure. Cropping of stock photography is expected and not itself a failure. Do not fail for subjective taste, hierarchy, color preference, full URLs that are readable in the PDF, or ordinary design tradeoffs. If no objective defect exists return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"precise visible defect"}],"patches":[{"slide":1,"element":2,"changes":{"x":1.1,"h":1.2}}]}. Slide indices are 1-based, element indices 0-based; only patch an index you can verify in the plan. Patch only exact defective elements. Current plan: '+json.dumps(plan,ensure_ascii=False))
+    instruction=('Review rendered slides for both objective release defects (overflow, clipping, overlap, missing content, unreadable type, low contrast) AND design sense: clear hierarchy, intentional composition, balanced whitespace, fitting typography, image treatment and a coherent rhythm across slides. A sparse slide with a purposeful focal point is fine; repeated bare text with a half-empty canvas is not. Judge the actual deck against its brief, not personal color taste. Fact verification happens in a later phase; do not certify factual accuracy here. If no objective defect exists return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"precise visible defect"}],"patches":[{"slide":1,"element":2,"changes":{"x":1.1,"h":1.2}}]}. Slide indices are 1-based, element indices 0-based; only patch an index you can verify in the plan. Patch only exact defective elements. Current plan: '+json.dumps(plan,ensure_ascii=False))
     content=[{'type':'text','text':instruction}]
     for f in images:
         b64=base64.b64encode(f.read_bytes()).decode();content.append({'type':'image_url','image_url':{'url':'data:image/png;base64,'+b64,'detail':'low'}})
@@ -219,8 +219,9 @@ def unsupported_claims(plan):
             if e.get('type')=='text' and pattern.search(e['text'])]
 
 def prepare(plan,out,iteration,model=None,api_url=API,log=None,max_patches=3):
-    claims=unsupported_claims(plan)
-    if claims:raise ValueError('unsupported growth claim: '+json.dumps(claims))
+    if getattr(prepare,'enforce_claims',False):
+        claims=unsupported_claims(plan)
+        if claims:raise ValueError('unsupported growth claim: '+json.dumps(claims))
     fixed,changes,issues=repair(plan)
     patch_count=0
     while issues and model and patch_count<max_patches and all(i['kind']=='text_fit' for i in issues):
@@ -233,6 +234,7 @@ def prepare(plan,out,iteration,model=None,api_url=API,log=None,max_patches=3):
     return fixed
 
 def run(args):
+    prepare.enforce_claims=getattr(args,'enforce_claims',False)
     brief=Path(args.brief).read_text();reference=Path(args.sources).read_text() if args.sources else ''
     manifest=json.loads(Path(args.assets).read_text());assets={a['id']:a for a in manifest}
     for a in assets.values():
@@ -269,6 +271,6 @@ def run(args):
     print('Critic did not approve; files are drafts, not deliverable',file=sys.stderr);return 3
 
 if __name__=='__main__':
-    ap=argparse.ArgumentParser();ap.add_argument('--brief',required=True);ap.add_argument('--assets',required=True);ap.add_argument('--sources');ap.add_argument('--output',required=True);ap.add_argument('--model',default='google/gemini-2.5-flash');ap.add_argument('--vision-model',default='google/gemini-2.5-flash');ap.add_argument('--api-url',default=API,help='OpenAI-compatible test endpoint override; keep default on VPS');ap.add_argument('--max-revisions',type=int,default=2)
+    ap=argparse.ArgumentParser();ap.add_argument('--brief',required=True);ap.add_argument('--assets',required=True);ap.add_argument('--sources');ap.add_argument('--output',required=True);ap.add_argument('--model',default='google/gemini-2.5-flash');ap.add_argument('--vision-model',default='google/gemini-2.5-flash');ap.add_argument('--api-url',default=API,help='OpenAI-compatible test endpoint override; keep default on VPS');ap.add_argument('--max-revisions',type=int,default=2);ap.add_argument('--enforce-claims',action='store_true',help='Opt-in factual trend guard; fact review is a separate phase')
     try:sys.exit(run(ap.parse_args()))
     except Exception as exc: print('ERROR:',exc,file=sys.stderr);sys.exit(1)

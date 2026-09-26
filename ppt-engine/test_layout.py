@@ -64,6 +64,16 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(engine.unsupported_claims(p)[0]['element'],0)
         p['slides'][0]['elements'][0]['text']='CAIT projected ₹30,000 crore business in 2025.'
         self.assertEqual(engine.unsupported_claims(p),[])
+        import tempfile
+        from pathlib import Path
+        p['slides'][0]['elements'][0].update(text='Economic impact continues to grow',x=1,y=1,w=5,h=.8,pt=17)
+        with tempfile.TemporaryDirectory() as d:
+            engine.prepare.enforce_claims=False
+            engine.prepare(p,Path(d),0)
+            engine.prepare.enforce_claims=True
+            try:
+                with self.assertRaisesRegex(ValueError,'unsupported growth claim'):engine.prepare(p,Path(d),0)
+            finally:engine.prepare.enforce_claims=False
     def test_pdf_render_audit_catches_actual_card_escape(self):
         import engine,json
         from pathlib import Path
