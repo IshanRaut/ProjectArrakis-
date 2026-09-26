@@ -1,0 +1,12 @@
+{
+  "name": "project-arrakis-local",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first OpenClaw agent prototype and document skill",
+  "scripts": {
+    "check": "python3 -m unittest discover -s tests -v",
+    "smoke": "bash scripts/smoke.sh"
+  },
+  "engines": { "node": ">=24.16.0 <25 || >=26.1.0" },
+  "dependencies": { "openclaw": "2026.9.6" }
+}
