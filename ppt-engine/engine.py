@@ -10,6 +10,7 @@ from pptx.util import Inches,Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
+from layout import repair,validate
 
 API='https://openrouter.ai/api/v1/chat/completions'
 MAX_OUTPUT_TOKENS=6500
@@ -18,7 +19,7 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS):
     key=os.environ.get('OPENROUTER_API_KEY','')
     if not key:raise RuntimeError('OPENROUTER_API_KEY not set; provide it in the VPS process environment, not on the command line')
     body=json.dumps({'model':model,'messages':messages,'temperature':.5,'max_tokens':max_tokens},ensure_ascii=False).encode()
-    req=urllib.request.Request(base_url,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','HTTP-Referer':'https://www.instinct.com','X-Title':'Presentation creative director'})
+    req=urllib.request.Request(base_url,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'ProjectArrakis presentation engine'})
     last=None
     for attempt in range(3):
         try:
@@ -100,10 +101,31 @@ def preview(pptx,pdf,folder):
     return images
 
 def critic_prompt(plan,images):
-    content=[{'type':'text','text':'Critique this rendered deck against its brief. Look at EVERY image for clipping, overlap, blank/sloppy composition, readability, mismatched imagery, weak story, unsupported claims, and misleading citations. If flaws exist return JSON {"approved":false,"issues":[{"slide":1,"problem":"..."}],"revised_plan":<FULL revised plan schema>}. If excellent return {"approved":true,"issues":[]}. Make substantive redesign choices yourself; do not merely replace placeholders. Current plan: '+json.dumps(plan,ensure_ascii=False)}]
+    content=[{'type':'text','text':'Review EVERY actual rendered slide for clipping, overlapping text, unreadable type, weak hierarchy, inappropriate crops and unsupported claims. Do not invent facts. If ready, return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"..."}],"patches":[{"slide":1,"element":2,"changes":{"x":0.8,"y":1.1,"w":5,"h":1,"pt":24}}]}. Indices: slide is 1-based, element is 0-based index in that slide elements. Supply ONLY targeted changed fields for identified elements, no full-plan rewrite; prefer reflow/resize/reposition over deleting facts. Current plan: '+json.dumps(plan,ensure_ascii=False)}]
     for f in images:
         b64=base64.b64encode(f.read_bytes()).decode();content.append({'type':'image_url','image_url':{'url':'data:image/png;base64,'+b64,'detail':'low'}})
     return content
+
+def apply_patches(plan,patches):
+    """Apply only critic-identified changes, never replace the whole plan."""
+    import copy
+    revised=copy.deepcopy(plan)
+    for patch in patches:
+        slide=int(patch['slide'])-1;index=int(patch['element'])
+        element=revised['slides'][slide]['elements'][index]
+        allowed={'x','y','w','h','pt','text','color','fill','focus','align'}
+        changes=patch['changes']
+        if not changes or set(changes)-allowed:raise ValueError('invalid targeted patch')
+        element.update(changes)
+    return revised
+
+
+def prepare(plan,out,iteration):
+    fixed,changes,issues=repair(plan)
+    (out/f'layout-{iteration}.json').write_text(json.dumps({'changes':changes,'remaining':issues},indent=2))
+    if issues:raise ValueError('layout preflight failed: '+json.dumps(issues[:8]))
+    return fixed
+
 
 def run(args):
     brief=Path(args.brief).read_text();reference=Path(args.sources).read_text() if args.sources else ''
@@ -111,23 +133,25 @@ def run(args):
     for a in assets.values():
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    response,usage=chat([{'role':'system','content':'You are the creative lead, responsible for design decisions, not a slot filler.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url)
+    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url)
     plan=parse_json(response);(out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
-    log=[{'stage':'planner','usage':usage}]
+    log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):
+        plan=prepare(plan,out,iteration)
+        (out/f'repaired-plan-{iteration}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
         pptx=out/'deck.pptx';pdf=out/'deck.pdf';render(plan,assets,pptx)
         images=preview(pptx,pdf,out/f'preview-{iteration}')
         if not args.vision_model:
             (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'UNVERIFIED: no vision model supplied; human review required'},indent=2))
             print('Generated but visually unverified; supply --vision-model to run critic loop.');return 2
-        raw,usage=chat([{'role':'system','content':'You are a rigorous presentation critic. Return strict JSON.'},{'role':'user','content':critic_prompt(plan,images)}],args.vision_model,args.api_url,max_tokens=7000)
-        result=parse_json(raw);log.append({'stage':'critic','iteration':iteration,'usage':usage,'issues':result.get('issues',[])})
+        raw,usage=chat([{'role':'system','content':'You are a rigorous visual presentation critic. Return strict JSON. Diagnose actual rendered pages and offer only targeted element patches.'},{'role':'user','content':critic_prompt(plan,images)}],args.vision_model,args.api_url,max_tokens=3500)
+        result=parse_json(raw);log.append({'stage':'critic','model':args.vision_model,'iteration':iteration,'usage':usage,'issues':result.get('issues',[])})
         (out/f'critique-{iteration}.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
         if result.get('approved') is True:
             (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'model-inspected all slide previews; review PDF as final viewer check'},indent=2));print('Approved',pptx,pdf);return 0
         if iteration>=args.max_revisions:break
-        if 'revised_plan' not in result:raise ValueError('critic rejected without full revised_plan')
-        plan=result['revised_plan'];(out/f'plan-{iteration+1}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
+        if not result.get('patches'):raise ValueError('critic rejected without targeted patches')
+        plan=apply_patches(plan,result['patches']);(out/f'plan-{iteration+1}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'FAILED: unresolved critic issues'},indent=2))
     print('Critic did not approve; files are drafts, not deliverable',file=sys.stderr);return 3
 
