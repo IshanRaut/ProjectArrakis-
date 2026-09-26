@@ -195,6 +195,38 @@ class ParsingTests(unittest.TestCase):
             payload=json.loads(call.call_args.args[0].data)
             self.assertEqual(payload['response_format'],schema)
             self.assertEqual(payload['provider'],{'require_parameters':True})
+    def test_provider_strict_schema_subset_and_normalization(self):
+        import engine,jsonschema
+        schema=engine.planner_response_format()['json_schema']['schema']
+        jsonschema.Draft202012Validator.check_schema(schema)
+        def inspect(node):
+            if node.get('type')=='object':
+                self.assertEqual(node['additionalProperties'],False)
+                self.assertEqual(set(node['properties']),set(node['required']))
+                for child in node['properties'].values():inspect(child)
+            elif 'items' in node:inspect(node['items'])
+        inspect(schema)
+        plan={'palette':[{'name':'cream','hex':'F5F5DC'}],'slides':[{'background':'cream','intent':None,
+          'elements':[{'type':'text','x':1,'y':1,'w':10,'h':1,'text':'Hello','pt':36,'color':'cream',
+             'bold':None,'align':None,'fill':None,'rounded':None,'asset':None,'focus':None}]}]}
+        jsonschema.validate(plan,schema)
+        normalized=engine.normalize_plan_schema(plan)
+        self.assertEqual(normalized['palette'],{'cream':'F5F5DC'})
+        self.assertNotIn('asset',normalized['slides'][0]['elements'][0])
+    def test_http_400_diagnostic_redacts_key(self):
+        import engine,json,io,os,tempfile,urllib.error
+        from pathlib import Path
+        from unittest.mock import patch
+        key='sk-or-v1-abcdefghijklmnopqrstuvwxyz123456'
+        error=urllib.error.HTTPError('https://openrouter.ai/api/v1/chat/completions',400,'Bad Request',{},
+                io.BytesIO(json.dumps({'error':{'message':'bad schema '+key}}).encode()))
+        with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'OPENROUTER_API_KEY':'mock'}),patch.object(engine.urllib.request,'urlopen',side_effect=error):
+            path=Path(tmp)/'raw.json'
+            with self.assertRaisesRegex(RuntimeError,'provider HTTP 400'):
+                engine.chat([], 'mock',raw_path=path,response_format=engine.planner_response_format())
+            logged=Path(str(path)+'.error.json').read_text()
+            self.assertNotIn(key,logged)
+            self.assertIn('[redacted]',logged)
     def test_all_three_failed_payload_classes(self):
         import engine,json
         from pathlib import Path

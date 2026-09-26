@@ -2,7 +2,7 @@
 """Model-directed presentation engine. Layout/creative choices are produced at runtime.
 A small PPTX renderer accepts geometry but never picks a topic or layout itself.
 """
-import argparse,base64,io,json,os,re,subprocess,sys,tempfile,urllib.request
+import argparse,base64,io,json,os,re,subprocess,sys,tempfile,urllib.request,urllib.error
 from pathlib import Path
 from PIL import Image,ImageOps
 from pptx import Presentation
@@ -16,26 +16,34 @@ API='https://openrouter.ai/api/v1/chat/completions'
 MAX_OUTPUT_TOKENS=6500
 
 def planner_response_format():
-    """Constrain shape, not composition. The model still chooses every slide."""
-    color={'type':'string','description':'RGB hex or a key from palette'}
-    num={'type':'number'}
+    """Strict, provider-portable geometry schema; content/composition remain free."""
+    color={'type':'string','description':'RGB hex or named palette key'}
+    number={'type':'number'}
+    # Strict providers require every defined property in required. Use nullable
+    # optional fields and a palette as freely named key/value entries instead
+    # of arbitrary additionalProperties on an object.
+    def optional(kind):return {'type':[kind,'null']}
     element={'type':'object','properties':{
         'type':{'type':'string','enum':['text','box','image']},
-        'x':num,'y':num,'w':num,'h':num,
-        'text':{'type':'string'},'pt':num,'color':color,
-        'bold':{'type':'boolean'},'align':{'type':'string','enum':['left','center','right']},
-        'fill':color,'rounded':{'type':'boolean'},
-        'asset':{'type':'string'},'focus':{'type':'array','items':num,'minItems':2,'maxItems':2}
-    },'required':['type','x','y','w','h'],'additionalProperties':False}
+        'x':number,'y':number,'w':number,'h':number,
+        'text':optional('string'),'pt':optional('number'),'color':optional('string'),
+        'bold':optional('boolean'),'align':{'type':['string','null'],'enum':['left','center','right',None]},
+        'fill':optional('string'),'rounded':optional('boolean'),
+        'asset':optional('string'),'focus':{'type':['array','null'],'items':number}
+    },'required':['type','x','y','w','h','text','pt','color','bold','align','fill','rounded','asset','focus'],
+       'additionalProperties':False}
+    entry={'type':'object','properties':{'name':{'type':'string'},'hex':{'type':'string'}},
+           'required':['name','hex'],'additionalProperties':False}
     slide={'type':'object','properties':{
-        'background':color,'intent':{'type':'string'},
-        'elements':{'type':'array','items':element,'minItems':1,'maxItems':12}
-    },'required':['background','elements'],'additionalProperties':False}
+        'background':color,'intent':optional('string'),
+        'elements':{'type':'array','items':element}
+    },'required':['background','intent','elements'],'additionalProperties':False}
     schema={'type':'object','properties':{
-        'palette':{'type':'object','additionalProperties':{'type':'string'}},
-        'slides':{'type':'array','items':slide,'minItems':1,'maxItems':8}
+        'palette':{'type':'array','items':entry},
+        'slides':{'type':'array','items':slide}
     },'required':['palette','slides'],'additionalProperties':False}
     return {'type':'json_schema','json_schema':{'name':'project_arrakis_deck_plan','strict':True,'schema':schema}}
+
 
 def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None,response_format=None):
     key=os.environ.get('OPENROUTER_API_KEY','')
@@ -51,7 +59,16 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None,
     body=json.dumps(payload,ensure_ascii=False).encode()
     req=urllib.request.Request(base_url,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'ProjectArrakis presentation engine'})
     # No implicit paid retry. Persist provider usage even for truncated plans.
-    with urllib.request.urlopen(req,timeout=100) as res: ans=json.load(res)
+    try:
+        with urllib.request.urlopen(req,timeout=100) as res: ans=json.load(res)
+    except urllib.error.HTTPError as exc:
+        # Only response body and status, never request headers or credentials.
+        diagnostic=exc.read(4096).decode('utf-8','replace')
+        diagnostic=re.sub(r'sk-or-v1-[A-Za-z0-9_-]+','[redacted]',diagnostic)
+        if raw_path:
+            Path(str(raw_path)+'.error.json').write_text(json.dumps({'http_status':exc.code,
+                'model':model,'response_body':diagnostic},ensure_ascii=False,indent=2))
+        raise RuntimeError(f'provider HTTP {exc.code}: {diagnostic[:1200]}') from None
     choice=ans['choices'][0]
     if raw_path:
         Path(raw_path).write_text(json.dumps({'model':model,'message':choice['message'],
@@ -83,6 +100,11 @@ def normalize_plan_schema(plan):
     if 'unsupported_format' in plan:return plan
     import copy
     result=copy.deepcopy(plan)
+    if isinstance(result.get('palette'),list):
+        entries=result['palette']
+        if not all(isinstance(e,dict) and isinstance(e.get('name'),str) and isinstance(e.get('hex'),str) for e in entries):
+            raise ValueError('invalid palette entries')
+        result['palette']={e['name']:e['hex'] for e in entries}
     if not isinstance(result.get('slides'),list) or not isinstance(result.get('palette'),dict):
         raise ValueError('planner response lacks a complete deck schema')
     for si,slide in enumerate(result['slides']):
@@ -97,6 +119,9 @@ def normalize_plan_schema(plan):
             item=e[kinds[0]]
             if item.get('type')!=kinds[0]:raise ValueError('nested element type mismatch')
             normalized.append(item)
+        for item in normalized:
+            for key in ('text','pt','color','bold','align','fill','rounded','asset','focus'):
+                if item.get(key) is None:item.pop(key,None)
         slide['elements']=normalized
     return result
 
@@ -106,7 +131,7 @@ def prompt(brief,assets,reference):
     # geometry and imagery. Fewer optional fields keep full JSON inside budget.
     return ("Design a short projector-readable 16:9 deck from this brief. Return ONLY compact JSON, no markdown, explanation, repeated evidence, or verbose intent. "
         "Target under 4200 output tokens; 4-6 slides; <=9 elements per slide; text <=28 words per element. "
-        "13.333x7.5in canvas. Required root: palette (name -> six-digit hex), slides. "
+        "13.333x7.5in canvas. Required root: palette (array of {name,hex} entries when structured outputs are enabled; otherwise a name-to-hex object), slides. "
         "Each slide: background, elements. Optional intent <=8 words. Each element: "
         "text {type,text,x,y,w,h,pt,color} (optional bold,align); "
         "box {type,x,y,w,h,fill} (optional rounded); "
