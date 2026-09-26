@@ -38,15 +38,42 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None)
 def parse_json(s):
     if not isinstance(s,str):raise ValueError('model response was not text')
     s=s.strip()
-    # Only tolerate a whole fenced JSON document. Searching for the first
-    # nested object can turn a truncated palette into a false complete plan.
     fence=re.fullmatch(r'```(?:json)?\s*\n(.*?)\n```',s,re.I|re.S)
     if fence:s=fence.group(1).strip()
     if not s.startswith('{') or not s.endswith('}'):
         raise ValueError('model response is not a complete JSON object')
-    obj=json.loads(s)
+    try:obj=json.loads(s)
+    except json.JSONDecodeError:
+        # Gemini occasionally writes a duplicate opening quote before a known
+        # field, e.g. `," "x":`. Repair ONLY this bounded syntax error;
+        # never invent brackets, complete truncated output or alter text values.
+        repaired=re.sub(r',\s*"\s*"(?=(?:x|y|w|h|pt|color|bold|align|fill|rounded|focus)"\s*:)',', "',s)
+        if repaired==s:raise
+        obj=json.loads(repaired)
     if not isinstance(obj,dict):raise ValueError('model response must be a JSON object')
     return obj
+
+def normalize_plan_schema(plan):
+    """Unwrap a known Gemini single-key shape drift, without changing design."""
+    if 'unsupported_format' in plan:return plan
+    import copy
+    result=copy.deepcopy(plan)
+    if not isinstance(result.get('slides'),list) or not isinstance(result.get('palette'),dict):
+        raise ValueError('planner response lacks a complete deck schema')
+    for si,slide in enumerate(result['slides']):
+        if isinstance(slide.get('background'),dict) and set(slide['background'])=={'fill'}:
+            slide['background']=slide['background']['fill']
+        normalized=[]
+        for ei,e in enumerate(slide.get('elements',[])):
+            if 'type' in e:normalized.append(e);continue
+            kinds=[k for k in ('text','box','image') if k in e]
+            if len(kinds)!=1 or not isinstance(e[kinds[0]],dict):
+                raise ValueError(f'unknown element schema slide {si+1} element {ei}')
+            item=e[kinds[0]]
+            if item.get('type')!=kinds[0]:raise ValueError('nested element type mismatch')
+            normalized.append(item)
+        slide['elements']=normalized
+    return result
 
 
 def prompt(brief,assets,reference):
@@ -241,9 +268,7 @@ def run(args):
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
     response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=9500 if args.model.endswith(':free') else 7000,raw_path=out/'raw-planner.json')
-    plan=parse_json(response)
-    if 'unsupported_format' not in plan and (not isinstance(plan.get('slides'),list) or not isinstance(plan.get('palette'),dict)):
-        raise ValueError('planner response lacks a complete deck schema')
+    plan=normalize_plan_schema(parse_json(response))
     (out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):

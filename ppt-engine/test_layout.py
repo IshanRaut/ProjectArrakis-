@@ -117,6 +117,36 @@ class ParsingTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'truncated at token cap'):
                     engine.chat([], 'mock', raw_path=Path(tmp)/'raw.json')
             self.assertEqual(json.loads((Path(tmp)/'raw.json').read_text())['usage']['completion_tokens'],5600)
+    def test_actual_malformed_gemini_payload_salvage(self):
+        import engine,json
+        from pathlib import Path
+        # Captured after a paid response finished normally but was not valid JSON.
+        # Fixture omits original prose and URLs while retaining exact broken shape.
+        fixture=Path(__file__).parent/'fixtures'/'malformed-gemini-plan.json.txt'
+        raw=fixture.read_text()
+        with self.assertRaises(json.JSONDecodeError):json.loads(raw)
+        plan=engine.normalize_plan_schema(engine.parse_json(raw))
+        self.assertEqual(len(plan['slides']),2)
+        self.assertEqual(plan['slides'][0]['background'],'cream')
+        self.assertEqual(plan['slides'][0]['elements'][1]['type'],'text')
+        self.assertEqual(plan['slides'][1]['elements'][0]['text'],'Source: example.org')
+    def test_no_unbounded_json_repair(self):
+        import engine,json
+        with self.assertRaises(json.JSONDecodeError):engine.parse_json('{"slides": [,,,], "palette": {}}')
+    def test_actual_payload_file_salvages_when_available(self):
+        import engine,json
+        from pathlib import Path
+        path=Path('/tmp/arrakis-design-paid-onerun/raw-planner.json')
+        if not path.exists():self.skipTest('live payload not retained in scratch')
+        raw=json.loads(path.read_text())['message']['content']
+        plan=engine.normalize_plan_schema(engine.parse_json(raw))
+        self.assertEqual(len(plan['slides']),6)
+        self.assertEqual(len(plan['slides'][0]['elements']),5)
+        self.assertEqual(plan['slides'][0]['elements'][0]['type'],'image')
+    def test_unknown_nested_schema_rejected(self):
+        import engine
+        with self.assertRaisesRegex(ValueError,'unknown element schema'):
+            engine.normalize_plan_schema({'palette':{},'slides':[{'background':'cream','elements':[{'title':{'text':'oops'}}]}]})
     def test_prompt_is_compact_but_source_complete(self):
         import engine
         brief='Explain the festival economy without audited figures.'
