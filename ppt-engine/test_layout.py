@@ -90,7 +90,7 @@ class LayoutTests(unittest.TestCase):
     def test_generic_image_occlusion_and_overlap(self):
         image={'type':'image','asset':'test','x':0,'y':0,'w':13.333,'h':7.5}
         box={'type':'box','fill':'000000','x':0,'y':0,'w':13.333,'h':7.5}
-        text={'type':'text','text':'Disclaimer across picture bottom','x':1,'y':7.2,'w':10,'h':.4,'pt':14}
+        text={'type':'text','text':'Disclaimer across picture bottom','x':1,'y':7.08,'w':10,'h':.4,'pt':14}
         p={'slides':[{'elements':[image,box,text]}]}
         issues=validate(p)
         self.assertIn('image_occlusion',{i['kind'] for i in issues})
