@@ -55,6 +55,23 @@ class Archetypes(unittest.TestCase):
             self.assertEqual(len(Presentation(p/'deck.pptx').slides),7)
             self.assertGreater(sum(sh.has_text_frame for sl in Presentation(p/'deck.pptx').slides for sh in sl.shapes),20)
             self.assertEqual(engine.audit_rendered_text(plan,p/'deck.pdf'),[])
+    def test_big_stat_subtitle_gets_anchored_panel(self):
+        s=slide('big_stat',subtitle='CAIT 2025 trade projection',image_asset=None,
+                items=[{'heading':None,'value':'₹30,000 crore','text':'Trade estimate'}])
+        p,_=compose({'palette':PALETTE,'slides':[s]},ASSETS)
+        elements=p['slides'][0]['elements']
+        subtitle=next(e for e in elements if e.get('type')=='text' and 'CAIT 2025' in e['text'])
+        self.assertTrue(any(e['type']=='box' and e['x']<=subtitle['x'] and e['x']+e['w']>=subtitle['x']+subtitle['w'] for e in elements))
+        self.assertFalse(validate(p))
+    def test_tall_cards_balance_content_vertically(self):
+        s=slide('card_grid',items=[{'heading':'Setup','value':'₹12,000 crore','text':'Decor and puja'},
+                                   {'heading':'Food','value':'₹2,400 crore','text':'Vendors'}])
+        p,_=compose({'palette':PALETTE,'slides':[s]},ASSETS)
+        elements=p['slides'][0]['elements']
+        first_card=next(e for e in elements if e['type']=='box')
+        children=[e for e in elements if e['type']=='text' and e['x']>=first_card['x'] and e['x']+e['w']<=first_card['x']+first_card['w'] and e['y']>=first_card['y']]
+        self.assertGreaterEqual(max(e['y'] for e in children),first_card['y']+2.9)
+        self.assertFalse(validate(p))
     def test_unfit_content_fails_without_lossy_rewrite(self):
         long='A long sentence about the festival and all its many unrelated details. '*30
         with self.assertRaisesRegex(ValueError,'text cannot fit'):

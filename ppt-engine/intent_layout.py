@@ -76,7 +76,13 @@ def compose(intent,assets):
                  _text(items[0].get('heading'),1.02,3.75,6.35,1.05,26,ink,True,min_pt=18),
                  _text(body or items[0].get('text'),1.02,4.9,6.35,1.12,19,ink,min_pt=15))
             if image:_add(e,_img(image,8.0,1.65,4.65,4.7))
-            else:_add(e,_text(subtitle,8.05,2.2,4.25,2.1,24,ink,min_pt=17))
+            elif subtitle:
+                # A half-empty right column needs a visual anchor: use a
+                # deliberate rail/card tied to the main statistic, never
+                # detached free-floating prose.
+                _add(e,_box(8.0,2.65,4.55,1.85,card),
+                     _box(8.0,2.65,.14,1.85,accent),
+                     _text(subtitle,8.36,2.97,3.85,1.12,23,ink,True,min_pt=17))
         elif pattern=='card_grid':
             n=len(items)
             if not 2<=n<=4:raise ValueError('card_grid needs 2-4 cards')
@@ -88,13 +94,20 @@ def compose(intent,assets):
             for k,item in enumerate(items):
                 col=k%cols;row=k//cols;x=.7+col*(w+.3);y=1.55+row*(h+.32)
                 _add(e,_box(x,y,w,h,card))
+                # A balanced vertical stack leaves room for the stat to breathe
+                # while avoiding a tiny cluster in the top quarter of a tall
+                # card. Measured text may still shrink inside each zone.
+                if rows==1:
+                    value_y,head_y,copy_y=y+.45,y+1.92,y+3.02
+                    value_h,head_h,copy_h=.93,.85,1.05
+                else:
+                    value_y,head_y,copy_y=y+.18,y+.84,y+1.42
+                    value_h,head_h,copy_h=.59,.49,.53
                 if item.get('value'):
-                    _add(e,_text(item['value'],x+.23,y+.20,w-.46,.95 if rows==1 else .63,38,accent,True,min_pt=24))
-                    head_y=y+(1.28 if rows==1 else .9)
-                else:head_y=y+.25
-                _add(e,_text(item.get('heading'),x+.23,head_y,w-.46,.85 if rows==1 else .55,23,ink,True,min_pt=17))
-                copy_y=head_y+(1.05 if rows==1 else .62)
-                _add(e,_text(item.get('text'),x+.23,copy_y,w-.46,max(.3,y+h-.24-copy_y),17,ink,min_pt=14))
+                    _add(e,_text(item['value'],x+.23,value_y,w-.46,value_h,38,accent,True,min_pt=24))
+                else:head_y=y+(.55 if rows==1 else .25)
+                _add(e,_text(item.get('heading'),x+.23,head_y,w-.46,head_h,23,ink,True,min_pt=17))
+                _add(e,_text(item.get('text'),x+.23,copy_y,w-.46,copy_h,17,ink,min_pt=14))
         elif pattern=='split_image_text':
             if not image:raise ValueError('split_image_text needs image asset')
             side=s.get('image_side') or 'right'
