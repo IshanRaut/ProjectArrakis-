@@ -105,6 +105,18 @@ def repair(plan,passes=5):
         for fault in faults:
             if fault['kind']=='slide_count':continue
             si,ei=fault['slide'],fault['element'];e=p['slides'][si]['elements'][ei]
+            # At <=0.04in, font metrics/fallback variation can create a false
+            # positive. Prefer an actual bounded box extension if clear.
+            if fault['kind']=='text_fit' and fault['need']-fault['have']<=.04:
+                spare=H-(e['y']+e['h'])-.015
+                neighbors=[o for j,o in enumerate(p['slides'][si]['elements']) if j!=ei and o.get('type')=='text' and o['y']>=e['y']+e['h']-.001 and max(e['x'],o['x'])<min(e['x']+e['w'],o['x']+o['w'])]
+                if neighbors:spare=min(spare,min(o['y']-(e['y']+e['h'])-.03 for o in neighbors))
+                if spare>=fault['need']-fault['have']+.005:
+                    e['h']=round(float(fault['need'])+.005,3)
+                    changes.append({'slide':si+1,'element':ei,'kind':'micro_text_fit_nudge','after_h':e['h']})
+                    progress=True
+                    continue
+
             before=(e.get('x'),e.get('y'),e.get('w'),e.get('h'),e.get('pt'))
             if fault['kind']=='bounds':
                 e['x']=max(.08,min(float(e['x']),W-.3));e['y']=max(.08,min(float(e['y']),H-.25))

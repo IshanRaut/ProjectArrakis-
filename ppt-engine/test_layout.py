@@ -14,6 +14,13 @@ class LayoutTests(unittest.TestCase):
         a,_=measure('short',32,4)
         b,n=measure('<b>Long source label</b> ' * 8,32,4)
         self.assertGreater(b,a);self.assertGreater(n,1)
+    def test_micro_nudge_preserves_text(self):
+        from layout import repair,validate
+        p={'slides':[{'elements':[{'type':'text','text':'A short source label','x':1,'y':1,'w':5,'h':.37,'pt':15}]}]}
+        fixed,changes,issues=repair(p)
+        self.assertFalse(issues)
+        self.assertEqual(fixed['slides'][0]['elements'][0]['text'],'A short source label')
+        self.assertTrue(any(c['kind']=='micro_text_fit_nudge' for c in changes))
     def test_targeted_repair(self):
         p={'slides':[{'elements':[{'type':'text','text':'A long headline that cannot fit in a tiny box','x':1,'y':1,'w':4,'h':.35,'pt':40},{'type':'text','text':'Second','x':1,'y':4,'w':3,'h':.8,'pt':24}]}]}
         self.assertTrue(validate(p))
