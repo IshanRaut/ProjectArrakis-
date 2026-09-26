@@ -238,6 +238,18 @@ def targeted_rewrite(plan,issue,model,api_url,raw_path):
     return fixed,usage
 
 
+def validate_source_urls(plan,reference):
+    """URLs in a deck must be exact source URL tokens, not plausible typos."""
+    allowed={u.rstrip('.,;') for u in re.findall(r'https?://[^\s<>"\']+',reference)}
+    found=[]
+    for si,slide in enumerate(plan.get('slides',[])):
+        for ei,e in enumerate(slide.get('elements',[])):
+            if e.get('type')!='text':continue
+            for u in re.findall(r'https?://[^\s<>"\']+',e.get('text','')):
+                url=u.rstrip('.,;')
+                if url not in allowed:found.append({'slide':si+1,'element':ei,'url':url})
+    return found
+
 def unsupported_claims(plan):
     # This brief has two distinct trade projections, not longitudinal results.
     pattern=re.compile(r'\b(?:continues? to grow|growing economic impact|economic impact (?:has )?(?:grown|increased)|year[- ]on[- ]year growth|fastest[- ]growing)\b',re.I)
@@ -269,6 +281,8 @@ def run(args):
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
     response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=9500 if args.model.endswith(':free') else 7000,raw_path=out/'raw-planner.json')
     plan=normalize_plan_schema(parse_json(response))
+    bad_urls=validate_source_urls(plan,reference)
+    if bad_urls:raise ValueError('source URLs not copied verbatim: '+json.dumps(bad_urls))
     (out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):

@@ -81,6 +81,13 @@ def validate(plan):
 
     for si,slide in enumerate(plan['slides']):
         texts=[]
+        images=[(j,item) for j,item in enumerate(slide['elements']) if item.get('type')=='image']
+        for ij,image in images:
+            area=image['w']*image['h']
+            for bj,box in enumerate(slide['elements'][ij+1:],start=ij+1):
+                if box.get('type')=='box' and area>0 and intersection(image,box)/area>.75:
+                    issues.append({'slide':si,'element':bj,'other':ij,'kind':'image_occlusion',
+                                   'detail':'opaque box covers most of image'})
         for ei,e in enumerate(slide['elements']):
             x,y,w,h=(float(e.get(k,0)) for k in ('x','y','w','h'))
             if min(w,h)<=0 or x<0 or y<0 or x+w>W+.001 or y+h>H+.001:
@@ -88,6 +95,18 @@ def validate(plan):
             if e.get('type')!='text':continue
             need,lines=measure(e['text'],float(e['pt']),w,bool(e.get('bold')))
             if need>h+.02:issues.append({'slide':si,'element':ei,'kind':'text_fit','need':round(need,3),'have':h,'lines':lines})
+            for ij,image in images:
+                overlap=intersection(e,image)
+                if overlap>.025:
+                    # A deliberate short caption over the bottom of a photo is
+                    # supported; extended prose or a disclaimer straddling the
+                    # image boundary is not. Check the actual text length and
+                    # geometric containment, not every intentional overlay.
+                    inside=(x>=image['x']+.04 and x+w<=image['x']+image['w']-.04 and
+                            y>=image['y']+.04 and y+h<=image['y']+image['h']-.04)
+                    if not inside or len(e['text'])>100:
+                        issues.append({'slide':si,'element':ei,'other':ij,'kind':'text_image_overlap',
+                                       'area':round(overlap,3),'detail':'text overlaps/straddles image'})
             for oj,other in texts:
                 overlap=intersection(e,other)
                 if overlap>.025:issues.append({'slide':si,'element':ei,'other':oj,'kind':'text_overlap','area':round(overlap,3)})

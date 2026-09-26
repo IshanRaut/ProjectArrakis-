@@ -74,6 +74,32 @@ class LayoutTests(unittest.TestCase):
             try:
                 with self.assertRaisesRegex(ValueError,'unsupported growth claim'):engine.prepare(p,Path(d),0)
             finally:engine.prepare.enforce_claims=False
+    def test_occlusion_and_image_straddle_from_paid_plan(self):
+        import engine,json
+        from pathlib import Path
+        path=Path('/tmp/arrakis-design-paid-onerun/raw-planner.json')
+        if path.exists():
+            raw=json.loads(path.read_text())['message']['content']
+            p=engine.normalize_plan_schema(engine.parse_json(raw))
+            from layout import validate
+            issues=validate(p)
+            self.assertTrue(any(i['kind']=='image_occlusion' and i['slide']==0 for i in issues))
+            self.assertTrue(any(i['kind']=='text_image_overlap' and i['slide']==3 for i in issues))
+        else:
+            self.skipTest('live plan not retained in scratch')
+    def test_generic_image_occlusion_and_overlap(self):
+        image={'type':'image','asset':'test','x':0,'y':0,'w':13.333,'h':7.5}
+        box={'type':'box','fill':'000000','x':0,'y':0,'w':13.333,'h':7.5}
+        text={'type':'text','text':'Disclaimer across picture bottom','x':1,'y':7.2,'w':10,'h':.4,'pt':14}
+        p={'slides':[{'elements':[image,box,text]}]}
+        issues=validate(p)
+        self.assertIn('image_occlusion',{i['kind'] for i in issues})
+        self.assertIn('text_image_overlap',{i['kind'] for i in issues})
+        self.assertTrue(repair(p)[2])
+    def test_short_intentional_caption_inside_image_allowed(self):
+        p={'slides':[{'elements':[{'type':'image','asset':'test','x':1,'y':1,'w':8,'h':5},
+              {'type':'text','text':'Festival scene','x':1.4,'y':5.1,'w':4,'h':.5,'pt':18}]}]}
+        self.assertNotIn('text_image_overlap',{i['kind'] for i in validate(p)})
     def test_pdf_render_audit_catches_actual_card_escape(self):
         import engine,json
         from pathlib import Path
@@ -130,6 +156,13 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(plan['slides'][0]['background'],'cream')
         self.assertEqual(plan['slides'][0]['elements'][1]['type'],'text')
         self.assertEqual(plan['slides'][1]['elements'][0]['text'],'Source: example.org')
+    def test_source_url_exact_copy_only(self):
+        import engine
+        source='See https://timesofindia.indiatimes.com/article/123 and https://cait.in/report/'
+        p={'slides':[{'elements':[{'type':'text','text':'https://timesofindia.indiatiatimes.com/article/123'}]}]}
+        self.assertEqual(engine.validate_source_urls(p,source)[0]['slide'],1)
+        p['slides'][0]['elements'][0]['text']='https://cait.in/report/'
+        self.assertEqual(engine.validate_source_urls(p,source),[])
     def test_no_unbounded_json_repair(self):
         import engine,json
         with self.assertRaises(json.JSONDecodeError):engine.parse_json('{"slides": [,,,], "palette": {}}')
