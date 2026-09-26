@@ -2,7 +2,7 @@
 """Model-directed presentation engine. Layout/creative choices are produced at runtime.
 A small PPTX renderer accepts geometry but never picks a topic or layout itself.
 """
-import argparse,base64,io,json,os,re,subprocess,sys,tempfile,time,urllib.request
+import argparse,base64,io,json,os,re,subprocess,sys,tempfile,urllib.request
 from pathlib import Path
 from PIL import Image,ImageOps
 from pptx import Presentation
@@ -20,45 +20,49 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None)
     if not key:raise RuntimeError('OPENROUTER_API_KEY not set; provide it in the VPS process environment, not on the command line')
     body=json.dumps({'model':model,'messages':messages,'temperature':.5,'max_tokens':max_tokens},ensure_ascii=False).encode()
     req=urllib.request.Request(base_url,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'ProjectArrakis presentation engine'})
-    last=None
-    for attempt in range(1):
-        try:
-            with urllib.request.urlopen(req,timeout=100) as res: ans=json.load(res)
-            if raw_path:
-                # Never persist request headers, environment, or API keys.
-                Path(raw_path).write_text(json.dumps({'model':model,'message':ans['choices'][0]['message'],'finish_reason':ans['choices'][0].get('finish_reason'),'usage':ans.get('usage',{})},ensure_ascii=False,indent=2))
-            return ans['choices'][0]['message']['content'],ans.get('usage',{})
-        except Exception as exc:
-            last=exc
-            if attempt<0:time.sleep(1.5*(attempt+1))
-    raise RuntimeError(f'Model call failed after retries: {last}')
+    # No implicit paid retry. Persist provider usage even for truncated plans.
+    with urllib.request.urlopen(req,timeout=100) as res: ans=json.load(res)
+    choice=ans['choices'][0]
+    if raw_path:
+        Path(raw_path).write_text(json.dumps({'model':model,'message':choice['message'],
+            'finish_reason':choice.get('finish_reason'),'usage':ans.get('usage',{})},ensure_ascii=False,indent=2))
+    if choice.get('finish_reason')=='length':
+        raise ValueError('model output truncated at token cap; increase cap or shorten request (usage in raw response)')
+    return choice['message']['content'],ans.get('usage',{})
 
 def parse_json(s):
     if not isinstance(s,str):raise ValueError('model response was not text')
-    s=re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$','',s.strip())
-    try:return json.loads(s)
-    except json.JSONDecodeError:
-        # Bounded salvage: drop explanatory prefixes/suffixes around a complete
-        # object; never invent closing braces or silently change content.
-        dec=json.JSONDecoder()
-        for match in list(re.finditer(r'\{',s))[:5]:
-            try:
-                obj,end=dec.raw_decode(s[match.start():])
-                if isinstance(obj,dict):return obj
-            except json.JSONDecodeError:continue
-        raise
+    s=s.strip()
+    # Only tolerate a whole fenced JSON document. Searching for the first
+    # nested object can turn a truncated palette into a false complete plan.
+    fence=re.fullmatch(r'```(?:json)?\s*\n(.*?)\n```',s,re.I|re.S)
+    if fence:s=fence.group(1).strip()
+    if not s.startswith('{') or not s.endswith('}'):
+        raise ValueError('model response is not a complete JSON object')
+    obj=json.loads(s)
+    if not isinstance(obj,dict):raise ValueError('model response must be a JSON object')
+    return obj
 
 
 def prompt(brief,assets,reference):
-    return '''You are a presentation creative director. Think through purpose, audience, story, visual metaphor, source reliability, and the reference design. You decide everything creative at runtime. The renderer only implements your design geometry. Respond with ONE JSON object, no markdown.
+    # Compact syntax, not canned content. Planner still chooses story, palette,
+    # geometry and imagery. Fewer optional fields keep full JSON inside budget.
+    return ("Design a short projector-readable 16:9 deck from this brief. Return ONLY compact JSON, no markdown, explanation, repeated evidence, or verbose intent. "
+        "Target under 4200 output tokens; 4-6 slides; <=9 elements per slide; text <=28 words per element. "
+        "13.333x7.5in canvas. Required root: palette (name -> six-digit hex), slides. "
+        "Each slide: background, elements. Optional intent <=8 words. Each element: "
+        "text {type,text,x,y,w,h,pt,color} (optional bold,align); "
+        "box {type,x,y,w,h,fill} (optional rounded); "
+        "image {type,asset,x,y,w,h} (optional focus). Omitted optional fields use renderer defaults. "
+        "Coordinates numeric inches, positive, entirely inside canvas. Array order is layer order. "
+        "Creative choices and narrative are yours, not a fixed template. Keep fonts readable (body >=17pt, sources >=10pt). "
+        "Give cards >=0.14in bottom inset for ALL text including captions; leave space for wrapped source notes. "
+        "Use only supplied evidence and image asset IDs. Do not infer audited totals, measured growth/trends, or unsupported superlatives from trade projections. "
+        "Label estimates on relevant slides; include complete source URLs on a sources slide. Photos are illustrative, not proof of figures. "
+        "If requested format isn't PPTX/PDF return {\"unsupported_format\":\"...\"}.\n"
+        "BRIEF:\n"+brief+"\nEVIDENCE:\n"+reference+"\nASSETS:\n"+
+        json.dumps([{'id':a['id'],'description':a.get('description','')} for a in assets],ensure_ascii=False))
 
-Canvas is 13.333 by 7.5 inches. You MUST include keys: rationale (string), palette (object of color names -> six-digit hex strings), slides (array, 4-12). Each slide has background (palette name or hex), intent (string), elements (array). Each element is ONE of:
-- {"type":"text","text":"...","x":number,"y":number,"w":number,"h":number,"pt":number,"color":"palette key or hex","bold":bool,"align":"left|center|right"}
-- {"type":"box","x":number,"y":number,"w":number,"h":number,"fill":"palette key or hex","rounded":bool}
-- {"type":"image","asset":"asset ID from manifest","x":number,"y":number,"w":number,"h":number,"focus":[0.5,0.5]}
-Geometry must fit canvas. Layer order is array order. Keep text editable, give whitespace and hierarchy. No inherited placeholders or stale navigation. Build a topic-appropriate deck, not a rigid template clone. Use real assets ONLY from the manifest; do not invent image URLs or imply that an illustrative image documents a number. Use supplied evidence only: do not invent figures, quotations, growth or trend assertions, or source URLs. An increase between separate trade projections is not measured growth. Do not use unsupported superlatives. Text in a visual card must stay at least 0.14in inside its bottom boundary; do not place source notes on or across a card edge. Put material source labels and uncertainties on slides. A sources page should carry URLs. Avoid minuscule type (body >=17pt, sources >=10pt). If brief asks another output format, stop and return {"unsupported_format":"..."}; this engine only produces PPTX and PDF.
-
-USER BRIEF:\n'''+brief+'\n\nEVIDENCE / SOURCES:\n'+reference+'\n\nIMAGE MANIFEST:\n'+json.dumps(assets,ensure_ascii=False)
 
 def color(v,palette):
     raw=palette.get(v,v).lstrip('#').upper()
@@ -229,8 +233,11 @@ def run(args):
     for a in assets.values():
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=5600,raw_path=out/'raw-planner.json')
-    plan=parse_json(response);(out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
+    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=7000,raw_path=out/'raw-planner.json')
+    plan=parse_json(response)
+    if 'unsupported_format' not in plan and (not isinstance(plan.get('slides'),list) or not isinstance(plan.get('palette'),dict)):
+        raise ValueError('planner response lacks a complete deck schema')
+    (out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):
         plan=prepare(plan,out,iteration,args.model,args.api_url,log,max_patches=0 if args.max_revisions==0 else 3)

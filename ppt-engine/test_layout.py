@@ -59,11 +59,15 @@ class LayoutTests(unittest.TestCase):
     def test_pdf_render_audit_catches_actual_card_escape(self):
         import engine,json
         from pathlib import Path
-        example=Path('/tmp/arrakis-rubric-run1')
-        if not (example/'deck.pdf').exists():self.skipTest('prior live draft not available')
-        p=json.loads((example/'repaired-plan-0.json').read_text())
-        issues=engine.audit_rendered_text(p,example/'deck.pdf')
-        self.assertEqual({i['slide'] for i in issues if i['kind']=='rendered_card_overflow'},{3,4,5,6})
+        from unittest.mock import patch
+        import fitz
+        p={'slides':[{'elements':[{'type':'box','x':.6,'y':1.5,'w':12,'h':5.5},
+            {'type':'text','text':'Source note','x':1,'y':6.85,'w':10,'h':.4,'pt':10}]}]}
+        doc=fitz.open();page=doc.new_page(width=13.333*72,height=7.5*72)
+        page.insert_text((1*72,7.05*72),'Source note',fontsize=10)
+        with Path('/tmp/mock-overflow.pdf').open('wb') as f:f.write(doc.tobytes())
+        issues=engine.audit_rendered_text(p,'/tmp/mock-overflow.pdf')
+        self.assertIn('rendered_card_overflow',{i['kind'] for i in issues})
     def test_bounds_overlap(self):
         p={'slides':[{'elements':[{'type':'text','text':'A','x':12,'y':.1,'w':2,'h':1,'pt':24},{'type':'text','text':'B','x':1,'y':1,'w':3,'h':1,'pt':24},{'type':'text','text':'C','x':2,'y':1,'w':3,'h':1,'pt':24}]}]}
         kinds={x['kind'] for x in validate(p)}
@@ -74,7 +78,35 @@ if __name__=='__main__':unittest.main()
 class ParsingTests(unittest.TestCase):
     def test_salvage_complete_json_after_preface(self):
         import engine
-        self.assertEqual(engine.parse_json('Reasoning: done. {"slides": []} trailing'),{'slides':[]})
+        self.assertEqual(engine.parse_json('```json\n{"slides": []}\n```'),{'slides':[]})
+    def test_malformed_json_is_not_fabricated(self):
+        import engine
+        with self.assertRaises(ValueError):engine.parse_json('{"slides": [,,,], "palette": {}}')
+    def test_truncated_plan_rejected_without_render(self):
+        import engine,io,json,tempfile
+        from unittest.mock import patch
+        from pathlib import Path
+        class APIResponse:
+            def __init__(self,body):self.body=io.BytesIO(json.dumps(body).encode())
+            def read(self,*args):return self.body.read(*args)
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+        answer={'choices':[{'finish_reason':'length','message':{'content':'{"palette":{},"slides":['}}],
+                'usage':{'cost':0,'completion_tokens':5600}}
+        with tempfile.TemporaryDirectory() as tmp,patch.object(engine.urllib.request,'urlopen',return_value=APIResponse(answer)):
+            import os
+            with patch.dict(os.environ,{'OPENROUTER_API_KEY':'mock'}):
+                with self.assertRaisesRegex(ValueError,'truncated at token cap'):
+                    engine.chat([], 'mock', raw_path=Path(tmp)/'raw.json')
+            self.assertEqual(json.loads((Path(tmp)/'raw.json').read_text())['usage']['completion_tokens'],5600)
+    def test_prompt_is_compact_but_source_complete(self):
+        import engine
+        brief='Explain the festival economy without audited figures.'
+        sources='CAIT ₹30,000 crore estimate. https://cait.in/source'
+        result=engine.prompt(brief,[{'id':'a','file':'secret/local/path','description':'idol'}],sources)
+        self.assertIn(brief,result);self.assertIn(sources,result)
+        self.assertIn('under 4200 output tokens',result)
+        self.assertNotIn('secret/local/path',result)
     def test_refuse_truncated_json(self):
         import engine
         with self.assertRaises(ValueError):engine.parse_json('{"slides": [')

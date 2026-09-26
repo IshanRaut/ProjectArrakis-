@@ -24,5 +24,7 @@ with tempfile.TemporaryDirectory() as folder:
  from pptx import Presentation
  assert len(Presentation(a.output+'/deck.pptx').slides)==1
  assert Path(a.output+'/deck.pdf').is_file()
+ assert json.loads(Path(a.output+'/run-log.json').read_text())['iterations'][1]['stage']=='critic'
+ assert json.loads(Path(a.output+'/render-audit-0.json').read_text())==[]
  print('PASS local mock: planner, editable PPTX, PDF render, image-bearing critic call, approval, log')
 server.shutdown()
