@@ -44,6 +44,26 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(q['slides'][0]['elements'][1],p['slides'][0]['elements'][1])
         self.assertEqual(p['slides'][0]['elements'][0]['x'],1)
         self.assertEqual(engine.apply_patches(p,[{'slide':1,'element':99,'changes':{'x':3}}]),p)
+    def test_card_overflow_caught_before_export(self):
+        p={'slides':[{'elements':[{'type':'box','x':.6,'y':1.5,'w':12,'h':5.5,'fill':'FFFFFF'},
+             {'type':'text','text':'Source: CAIT projection','x':1,'y':6.9,'w':10,'h':.4,'pt':10}]}]}
+        self.assertIn('card_overflow',{i['kind'] for i in validate(p)})
+        fixed,_,issues=repair(p)
+        self.assertTrue(issues)  # no valid vertical room: do not silently crop
+    def test_unsupported_growth_claim(self):
+        import engine
+        p={'slides':[{'elements':[{'type':'text','text':'The economic impact continues to grow.'}]}]}
+        self.assertEqual(engine.unsupported_claims(p)[0]['element'],0)
+        p['slides'][0]['elements'][0]['text']='CAIT projected ₹30,000 crore business in 2025.'
+        self.assertEqual(engine.unsupported_claims(p),[])
+    def test_pdf_render_audit_catches_actual_card_escape(self):
+        import engine,json
+        from pathlib import Path
+        example=Path('/tmp/arrakis-rubric-run1')
+        if not (example/'deck.pdf').exists():self.skipTest('prior live draft not available')
+        p=json.loads((example/'repaired-plan-0.json').read_text())
+        issues=engine.audit_rendered_text(p,example/'deck.pdf')
+        self.assertEqual({i['slide'] for i in issues if i['kind']=='rendered_card_overflow'},{3,4,5,6})
     def test_bounds_overlap(self):
         p={'slides':[{'elements':[{'type':'text','text':'A','x':12,'y':.1,'w':2,'h':1,'pt':24},{'type':'text','text':'B','x':1,'y':1,'w':3,'h':1,'pt':24},{'type':'text','text':'C','x':2,'y':1,'w':3,'h':1,'pt':24}]}]}
         kinds={x['kind'] for x in validate(p)}

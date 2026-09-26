@@ -56,7 +56,7 @@ Canvas is 13.333 by 7.5 inches. You MUST include keys: rationale (string), palet
 - {"type":"text","text":"...","x":number,"y":number,"w":number,"h":number,"pt":number,"color":"palette key or hex","bold":bool,"align":"left|center|right"}
 - {"type":"box","x":number,"y":number,"w":number,"h":number,"fill":"palette key or hex","rounded":bool}
 - {"type":"image","asset":"asset ID from manifest","x":number,"y":number,"w":number,"h":number,"focus":[0.5,0.5]}
-Geometry must fit canvas. Layer order is array order. Keep text editable, give whitespace and hierarchy. No inherited placeholders or stale navigation. Build a topic-appropriate deck, not a rigid template clone. Use real assets ONLY from the manifest; do not invent image URLs or imply that an illustrative image documents a number. Use supplied evidence only: do not invent figures, quotations, or source URLs. Put material source labels and uncertainties on slides. A sources page should carry URLs. Avoid minuscule type (body >=17pt, sources >=10pt). If brief asks another output format, stop and return {"unsupported_format":"..."}; this engine only produces PPTX and PDF.
+Geometry must fit canvas. Layer order is array order. Keep text editable, give whitespace and hierarchy. No inherited placeholders or stale navigation. Build a topic-appropriate deck, not a rigid template clone. Use real assets ONLY from the manifest; do not invent image URLs or imply that an illustrative image documents a number. Use supplied evidence only: do not invent figures, quotations, growth or trend assertions, or source URLs. An increase between separate trade projections is not measured growth. Do not use unsupported superlatives. Text in a visual card must stay at least 0.14in inside its bottom boundary; do not place source notes on or across a card edge. Put material source labels and uncertainties on slides. A sources page should carry URLs. Avoid minuscule type (body >=17pt, sources >=10pt). If brief asks another output format, stop and return {"unsupported_format":"..."}; this engine only produces PPTX and PDF.
 
 USER BRIEF:\n'''+brief+'\n\nEVIDENCE / SOURCES:\n'+reference+'\n\nIMAGE MANIFEST:\n'+json.dumps(assets,ensure_ascii=False)
 
@@ -114,6 +114,46 @@ def preview(pptx,pdf,folder):
         f=folder/f'slide-{i+1:02}.png';pix.save(f);images.append(f)
     return images
 
+def audit_rendered_text(plan,pdf):
+    """PDF text span positions catch output that escapes its model text box/card.
+
+    The PDF renderer is the final viewer; reject questionable assignments rather
+    than granting a false pass. Coordinates are normalized to deck inches.
+    """
+    import fitz
+    document=fitz.open(pdf);issues=[]
+    for si,page in enumerate(document):
+        slide=plan['slides'][si]
+        elements=slide['elements']
+        cards=[e for e in elements if e.get('type')=='box']
+        # PDF extraction can wrap one editable box into several text blocks.
+        # Associate each span by its origin and horizontal overlap with the
+        # declared text boxes; all matched spans must stay in their geometry.
+        spans=[span for block in page.get_text('dict')['blocks'] if block.get('type')==0
+               for line in block['lines'] for span in line['spans'] if span['text'].strip()]
+        for span in spans:
+            x0,y0,x1,y1=[v/72 for v in span['bbox']]
+            candidates=[]
+            for ei,e in enumerate(elements):
+                if e.get('type')!='text':continue
+                overlap=max(0,min(x1,e['x']+e['w'])-max(x0,e['x']))
+                if not overlap:continue
+                # Allow small font ascender/descender offsets from y.
+                vertical=max(0,e['y']-.15-y0,y0-e['y']-e['h']-.10)
+                candidates.append((vertical,-overlap,ei,e))
+            if not candidates:
+                issues.append({'slide':si+1,'kind':'unmatched_pdf_text','text':span['text'][:80]});continue
+            _,_,ei,e=min(candidates)
+            card_candidates=[b for b in cards if b['x']+.04<=e['x'] and e['x']+e['w']<=b['x']+b['w']-.04
+                             and b['y']+.04<=e['y'] and e['y']<=b['y']+b['h']]
+            if card_candidates:
+                card=min(card_candidates,key=lambda b:b['w']*b['h'])
+                if y1>card['y']+card['h']-.11:
+                    issues.append({'slide':si+1,'element':ei,'kind':'rendered_card_overflow','bottom':round(y1,3),'card_bottom':card['y']+card['h'],'text':span['text'][:80]})
+            if y1>7.44 or y0<-.03 or x0<-.03 or x1>13.36:
+                issues.append({'slide':si+1,'element':ei,'kind':'rendered_slide_overflow','text':span['text'][:80]})
+    return issues
+
 def critic_prompt(plan,images):
     instruction=('Inspect all rendered slides for OBJECTIVE release defects only: text overflow or overlap, clipped or missing content, unreadable text at presentation size, invalid/unsupported numbers or citations, and severe contrast failure. Cropping of stock photography is expected and not itself a failure. Do not fail for subjective taste, hierarchy, color preference, full URLs that are readable in the PDF, or ordinary design tradeoffs. If no objective defect exists return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"precise visible defect"}],"patches":[{"slide":1,"element":2,"changes":{"x":1.1,"h":1.2}}]}. Slide indices are 1-based, element indices 0-based; only patch an index you can verify in the plan. Patch only exact defective elements. Current plan: '+json.dumps(plan,ensure_ascii=False))
     content=[{'type':'text','text':instruction}]
@@ -162,7 +202,16 @@ def targeted_rewrite(plan,issue,model,api_url,raw_path):
     return fixed,usage
 
 
+def unsupported_claims(plan):
+    # This brief has two distinct trade projections, not longitudinal results.
+    pattern=re.compile(r'\b(?:continues? to grow|growing economic impact|economic impact (?:has )?(?:grown|increased)|year[- ]on[- ]year growth|fastest[- ]growing)\b',re.I)
+    return [{'slide':si+1,'element':ei,'text':e['text'][:140]}
+            for si,s in enumerate(plan['slides']) for ei,e in enumerate(s['elements'])
+            if e.get('type')=='text' and pattern.search(e['text'])]
+
 def prepare(plan,out,iteration,model=None,api_url=API,log=None,max_patches=3):
+    claims=unsupported_claims(plan)
+    if claims:raise ValueError('unsupported growth claim: '+json.dumps(claims))
     fixed,changes,issues=repair(plan)
     patch_count=0
     while issues and model and patch_count<max_patches and all(i['kind']=='text_fit' for i in issues):
@@ -180,18 +229,23 @@ def run(args):
     for a in assets.values():
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=12000,raw_path=out/'raw-planner.json')
+    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=5600,raw_path=out/'raw-planner.json')
     plan=parse_json(response);(out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):
-        plan=prepare(plan,out,iteration,args.model,args.api_url,log,max_patches=3)
+        plan=prepare(plan,out,iteration,args.model,args.api_url,log,max_patches=0 if args.max_revisions==0 else 3)
         (out/f'repaired-plan-{iteration}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
         pptx=out/'deck.pptx';pdf=out/'deck.pdf';render(plan,assets,pptx)
         images=preview(pptx,pdf,out/f'preview-{iteration}')
+        rendered_issues=audit_rendered_text(plan,pdf)
+        (out/f'render-audit-{iteration}.json').write_text(json.dumps(rendered_issues,indent=2))
+        if rendered_issues:
+            (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'FAILED: rendered text escaped card/slide','rendered_issues':rendered_issues},indent=2))
+            raise ValueError('rendered text QA failed: '+json.dumps(rendered_issues[:8]))
         if not args.vision_model:
             (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'UNVERIFIED: no vision model supplied; human review required'},indent=2))
             print('Generated but visually unverified; supply --vision-model to run critic loop.');return 2
-        raw,usage=chat([{'role':'system','content':'You are a rigorous visual presentation critic. Return strict JSON. Diagnose actual rendered pages and offer only targeted element patches.'},{'role':'user','content':critic_prompt(plan,images)}],args.vision_model,args.api_url,max_tokens=3500,raw_path=out/f'raw-critic-{iteration}.json')
+        raw,usage=chat([{'role':'system','content':'You are a rigorous visual presentation critic. Return strict JSON. Diagnose actual rendered pages and offer only targeted element patches.'},{'role':'user','content':critic_prompt(plan,images)}],args.vision_model,args.api_url,max_tokens=800,raw_path=out/f'raw-critic-{iteration}.json')
         result=parse_json(raw);log.append({'stage':'critic','model':args.vision_model,'iteration':iteration,'usage':usage,'issues':result.get('issues',[])})
         (out/f'critique-{iteration}.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
         if result.get('approved') is True:

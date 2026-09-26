@@ -91,6 +91,15 @@ def validate(plan):
             for oj,other in texts:
                 overlap=intersection(e,other)
                 if overlap>.025:issues.append({'slide':si,'element':ei,'other':oj,'kind':'text_overlap','area':round(overlap,3)})
+            # A card is a visual content boundary, not merely a background.
+            # Reserve an inset on all sides, especially for footnotes.
+            cards=[b for b in slide['elements'] if b.get('type')=='box'
+                   and b['x']+.04<=x and x+w<=b['x']+b['w']-.04
+                   and b['y']+.04<=y and y<=b['y']+b['h']]
+            if cards:
+                card=min(cards,key=lambda b:b['w']*b['h'])
+                if y+h>card['y']+card['h']-.14:
+                    issues.append({'slide':si,'element':ei,'kind':'card_overflow','detail':'text box exceeds card inset', 'card_bottom':card['y']+card['h']})
             texts.append((ei,e))
     return issues
 
@@ -121,6 +130,13 @@ def repair(plan,passes=5):
             if fault['kind']=='bounds':
                 e['x']=max(.08,min(float(e['x']),W-.3));e['y']=max(.08,min(float(e['y']),H-.25))
                 e['w']=max(.2,min(float(e['w']),W-e['x']-.04));e['h']=max(.2,min(float(e['h']),H-e['y']-.04))
+            elif fault['kind']=='card_overflow':
+                # Shrink the declared box only if the text still fits. Otherwise
+                # leave an actionable preflight failure, never hide text by clipping.
+                bottom=float(fault['card_bottom'])-.14
+                new_h=bottom-float(e['y'])
+                need,_=measure(e['text'],float(e['pt']),float(e['w']),bool(e.get('bold')))
+                if new_h>=need-.02:e['h']=round(new_h,3)
             elif fault['kind']=='text_fit':
                 available=H-float(e['y'])-.08
                 # Expand a box into genuinely unoccupied vertical space first.
