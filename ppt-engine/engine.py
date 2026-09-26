@@ -134,12 +134,42 @@ def apply_patches(plan,patches):
     return revised
 
 
-def prepare(plan,out,iteration):
+def targeted_rewrite(plan,issue,model,api_url,raw_path):
+    """Ask the planner to shorten ONE text element without changing its facts."""
+    from layout import measure
+    import copy
+    if issue.get('kind')!='text_fit':raise ValueError('only text_fit may be rewritten')
+    si,ei=issue['slide'],issue['element']
+    element=plan['slides'][si]['elements'][ei]
+    before=element['text']
+    if element.get('type')!='text':raise ValueError('rewrite target must be text')
+    request={'task':'Shorten only this slide text so it fits; preserve numbers, dates, named entities, uncertainty labels and URLs. Do not invent or remove evidence. Return JSON {"text":"..."} only.',
+             'slide_intent':plan['slides'][si].get('intent',''),'original_text':before,'box':{k:element[k] for k in ('w','h','pt')},'estimated_lines':issue.get('lines'),'required_height':issue.get('need')}
+    raw,usage=chat([{'role':'system','content':'Rewrite a single overflowing slide text element; keep every material fact intact. JSON only.'},{'role':'user','content':json.dumps(request,ensure_ascii=False)}],model,api_url,max_tokens=700,raw_path=raw_path)
+    replacement=parse_json(raw).get('text')
+    if not isinstance(replacement,str) or not replacement.strip() or len(replacement)>=len(before):raise ValueError('targeted rewrite did not shorten text')
+    # Never let a lossy rewrite drop a figure or a source URL.
+    import re
+    protected=re.findall(r'https?://[^\s<>]+|(?:₹|\$)\s*[\d,]+|\b\d[\d,.]*\s*(?:crore|lakh|%|20\d\d)\b',before,re.I)
+    for fact in protected:
+        if fact.rstrip('.,;') not in replacement:raise ValueError('targeted rewrite dropped protected fact: '+fact[:45])
+    fixed=copy.deepcopy(plan);fixed['slides'][si]['elements'][ei]['text']=replacement
+    need,_=measure(replacement,float(element['pt']),float(element['w']),bool(element.get('bold')))
+    if need>float(element['h'])+.02:raise ValueError('targeted rewrite still does not fit')
+    return fixed,usage
+
+
+def prepare(plan,out,iteration,model=None,api_url=API,log=None,max_patches=3):
     fixed,changes,issues=repair(plan)
-    (out/f'layout-{iteration}.json').write_text(json.dumps({'changes':changes,'remaining':issues},indent=2))
+    patch_count=0
+    while issues and model and patch_count<max_patches and all(i['kind']=='text_fit' for i in issues):
+        issue=issues[0]
+        candidate,usage=targeted_rewrite(fixed,issue,model,api_url,out/f'raw-rewrite-{iteration}-{patch_count}.json')
+        if log is not None:log.append({'stage':'rewrite','model':model,'iteration':iteration,'usage':usage,'target':{'slide':issue['slide']+1,'element':issue['element']}})
+        fixed,extra,issues=repair(candidate);changes+=extra;patch_count+=1
+    (out/f'layout-{iteration}.json').write_text(json.dumps({'changes':changes,'targeted_rewrites':patch_count,'remaining':issues},indent=2))
     if issues:raise ValueError('layout preflight failed: '+json.dumps(issues[:8]))
     return fixed
-
 
 def run(args):
     brief=Path(args.brief).read_text();reference=Path(args.sources).read_text() if args.sources else ''
@@ -151,7 +181,7 @@ def run(args):
     plan=parse_json(response);(out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):
-        plan=prepare(plan,out,iteration)
+        plan=prepare(plan,out,iteration,args.model,args.api_url,log,max_patches=3)
         (out/f'repaired-plan-{iteration}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
         pptx=out/'deck.pptx';pdf=out/'deck.pdf';render(plan,assets,pptx)
         images=preview(pptx,pdf,out/f'preview-{iteration}')

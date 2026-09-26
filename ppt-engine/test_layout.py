@@ -21,6 +21,14 @@ class LayoutTests(unittest.TestCase):
         self.assertFalse(issues,issues)
         self.assertEqual({k:v for k,v in fixed['slides'][0]['elements'][1].items() if k!='color'},p['slides'][0]['elements'][1])
         self.assertTrue(changes)
+    def test_targeted_rewrite_rejects_fact_loss(self):
+        import engine
+        from unittest.mock import patch
+        p={'slides':[{'intent':'Economy','elements':[{'type':'text','text':'CAIT projected ₹30,000 crore in 2025 across India, not audited.','x':1,'y':1,'w':3,'h':.6,'pt':20}]}]}
+        issue={'kind':'text_fit','slide':0,'element':0,'lines':2,'need':.8}
+        with patch.object(engine,'chat',return_value=('{"text":"A big festival."}',{'cost':0})):
+            with self.assertRaisesRegex(ValueError,'dropped protected fact'):
+                engine.targeted_rewrite(p,issue,'mock','http://localhost','/tmp/no-write-mock')
     def test_targeted_patch(self):
         import engine
         p={'slides':[{'elements':[{'type':'text','text':'A','x':1,'y':1,'w':2,'h':1,'pt':24},{'type':'text','text':'B','x':5,'y':1,'w':2,'h':1,'pt':24}]}]}
