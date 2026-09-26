@@ -204,9 +204,9 @@ class ParsingTests(unittest.TestCase):
         schema=engine.planner_response_format()
         self.assertEqual(schema['type'],'json_schema')
         self.assertTrue(schema['json_schema']['strict'])
-        props=schema['json_schema']['schema']['properties']['slides']['items']['properties']['elements']['items']['properties']
-        self.assertEqual(props['type']['enum'],['text','box','image'])
-        self.assertIn('focus',props)
+        props=schema['json_schema']['schema']['properties']['slides']['items']['properties']
+        self.assertEqual(props['archetype']['enum'],list(engine.ARCHETYPES))
+        self.assertNotIn('x',props)
         class Response:
             def __init__(self):self.body=io.BytesIO(json.dumps({'choices':[{'finish_reason':'stop','message':{'content':'{}'}}],'usage':{}}).encode())
             def read(self,*args):return self.body.read(*args)
@@ -228,13 +228,15 @@ class ParsingTests(unittest.TestCase):
                 for child in node['properties'].values():inspect(child)
             elif 'items' in node:inspect(node['items'])
         inspect(schema)
-        plan={'palette':[{'name':'cream','hex':'F5F5DC'}],'slides':[{'background':'cream','intent':None,
-          'elements':[{'type':'text','x':1,'y':1,'w':10,'h':1,'text':'Hello','pt':36,'color':'cream',
-             'bold':None,'align':None,'fill':None,'rounded':None,'asset':None,'focus':None}]}]}
+        plan={'palette':[{'name':'cream','hex':'F5F5DC'}],
+              'slides':[{'archetype':'title_hero','title':'Hello','subtitle':None,'body':'',
+               'quote':None,'items':[],'image_asset':None,'image_side':None,
+               'background':'cream','ink':'222222','accent':'A30000','card':'FFF4C9','source':None}]}
         jsonschema.validate(plan,schema)
-        normalized=engine.normalize_plan_schema(plan)
-        self.assertEqual(normalized['palette'],{'cream':'F5F5DC'})
-        self.assertNotIn('asset',normalized['slides'][0]['elements'][0])
+        from intent_layout import compose
+        deck,_=compose(plan,{})
+        self.assertEqual(deck['palette'],{'cream':'F5F5DC'})
+        self.assertEqual(deck['slides'][0]['elements'][0]['text'],'Hello')
     def test_http_400_diagnostic_redacts_key(self):
         import engine,json,io,os,tempfile,urllib.error
         from pathlib import Path
@@ -268,7 +270,7 @@ class ParsingTests(unittest.TestCase):
         sources='CAIT ₹30,000 crore estimate. https://cait.in/source'
         result=engine.prompt(brief,[{'id':'a','file':'secret/local/path','description':'idol'}],sources)
         self.assertIn(brief,result);self.assertIn(sources,result)
-        self.assertIn('under 4200 output tokens',result)
+        self.assertIn('No positions, dimensions or font sizes',result)
         self.assertNotIn('secret/local/path',result)
     def test_refuse_truncated_json(self):
         import engine

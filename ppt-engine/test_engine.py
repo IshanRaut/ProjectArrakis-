@@ -4,7 +4,12 @@ from http.server import BaseHTTPRequestHandler,HTTPServer
 from pathlib import Path
 import engine
 calls=[]
-plan={'rationale':'Mock design decision for test only','palette':{'cream':'F8F2E8','ink':'291628'},'slides':[{'background':'cream','intent':'Test editable native deck','elements':[{'type':'text','text':'Mock plan approved','x':.6,'y':.6,'w':10,'h':1,'pt':36,'color':'ink','bold':False,'align':'left'},{'type':'image','asset':'idol_stage','x':7,'y':2,'w':5,'h':4,'focus':[.5,.5]}]}]}
+plan={'palette':[{'name':'cream','hex':'F8F2E8'},{'name':'ink','hex':'291628'}],
+      'slides':[{'archetype':'title_hero','title':'Mock design approved','subtitle':'Festival economy',
+       'body':'Estimated trade activity, not an audited total.','quote':None,'items':[],
+       'image_asset':'idol_stage','image_side':'right','background':'cream','ink':'ink',
+       'accent':'A30000','card':'FFF4C9','source':None}]}
+
 class H(BaseHTTPRequestHandler):
  def do_POST(self):
   body=json.loads(self.rfile.read(int(self.headers['Content-Length'])));calls.append(body)
@@ -21,6 +26,7 @@ with tempfile.TemporaryDirectory() as folder:
  assert engine.run(a)==0
  assert len(calls)==2
  assert len(calls[1]['messages'][1]['content'])==2
+ assert 'No positions, dimensions or font sizes' in calls[0]['messages'][1]['content']
  from pptx import Presentation
  assert len(Presentation(a.output+'/deck.pptx').slides)==1
  assert Path(a.output+'/deck.pdf').is_file()

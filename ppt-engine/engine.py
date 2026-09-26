@@ -11,38 +11,26 @@ from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN
 from layout import repair,validate
+from intent_layout import ARCHETYPES,compose
 
 API='https://openrouter.ai/api/v1/chat/completions'
 MAX_OUTPUT_TOKENS=6500
 
 def planner_response_format():
-    """Strict, provider-portable geometry schema; content/composition remain free."""
-    color={'type':'string','description':'RGB hex or named palette key'}
-    number={'type':'number'}
-    # Strict providers require every defined property in required. Use nullable
-    # optional fields and a palette as freely named key/value entries instead
-    # of arbitrary additionalProperties on an object.
-    def optional(kind):return {'type':[kind,'null']}
-    element={'type':'object','properties':{
-        'type':{'type':'string','enum':['text','box','image']},
-        'x':{'type':'number','description':'Left inches 0..13.333'},'y':{'type':'number','description':'Top inches 0..7.5'},'w':{'type':'number','description':'Width; x+w<=13.333'},'h':{'type':'number','description':'Height; y+h<=7.5; card text ends >=0.14in before card bottom'},
-        'text':optional('string'),'pt':optional('number'),'color':optional('string'),
-        'bold':optional('boolean'),'align':{'type':['string','null'],'enum':['left','center','right',None]},
-        'fill':optional('string'),'rounded':optional('boolean'),
-        'asset':optional('string'),'focus':{'type':['array','null'],'items':number}
-    },'required':['type','x','y','w','h','text','pt','color','bold','align','fill','rounded','asset','focus'],
-       'additionalProperties':False}
-    entry={'type':'object','properties':{'name':{'type':'string'},'hex':{'type':'string'}},
-           'required':['name','hex'],'additionalProperties':False}
-    slide={'type':'object','properties':{
-        'background':color,'intent':optional('string'),
-        'elements':{'type':'array','items':element}
-    },'required':['background','intent','elements'],'additionalProperties':False}
-    schema={'type':'object','properties':{
-        'palette':{'type':'array','items':entry},
-        'slides':{'type':'array','items':slide}
-    },'required':['palette','slides'],'additionalProperties':False}
-    return {'type':'json_schema','json_schema':{'name':'project_arrakis_deck_plan','strict':True,'schema':schema}}
+    """Strict semantic output: models decide design/story, code places elements."""
+    def req(props):return {'type':'object','properties':props,'required':list(props),'additionalProperties':False}
+    def nullable(kind):return {'type':[kind,'null']}
+    item=req({'heading':nullable('string'),'value':nullable('string'),'text':nullable('string')})
+    slide=req({'archetype':{'type':'string','enum':list(ARCHETYPES)},
+       'title':{'type':'string'},'subtitle':nullable('string'),'body':nullable('string'),
+       'quote':nullable('string'),'items':{'type':'array','items':item},
+       'image_asset':nullable('string'),'image_side':nullable('string'),
+       'background':{'type':'string'},'ink':{'type':'string'},'accent':{'type':'string'},
+       'card':{'type':'string'},'source':nullable('string')})
+    palette=req({'name':{'type':'string'},'hex':{'type':'string'}})
+    schema=req({'palette':{'type':'array','items':palette},
+                'slides':{'type':'array','items':slide}})
+    return {'type':'json_schema','json_schema':{'name':'project_arrakis_design_intent','strict':True,'schema':schema}}
 
 
 def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None,response_format=None):
@@ -127,23 +115,18 @@ def normalize_plan_schema(plan):
 
 
 def prompt(brief,assets,reference):
-    # Compact syntax, not canned content. Planner still chooses story, palette,
-    # geometry and imagery. Fewer optional fields keep full JSON inside budget.
-    return ("Design a short projector-readable 16:9 deck from this brief. Return ONLY compact JSON, no markdown, explanation, repeated evidence, or verbose intent. "
-        "Target under 4200 output tokens; 4-6 slides; <=9 elements per slide; text <=28 words per element. "
-        "13.333x7.5in canvas. Required root: palette (array of {name,hex} entries when structured outputs are enabled; otherwise a name-to-hex object), slides. "
-        "Each slide: background, elements. Optional intent <=8 words. Each element: "
-        "text {type,text,x,y,w,h,pt,color} (optional bold,align); "
-        "box {type,x,y,w,h,fill} (optional rounded); "
-        "image {type,asset,x,y,w,h} (optional focus). Omitted optional fields use renderer defaults. "
-        "Coordinates numeric inches, positive, entirely inside canvas. Array order is layer order. "
-        "Creative choices and narrative are yours, not a fixed template. Make distinctive compositions: intentional asymmetry, editorial typography, image-and-number pairings and negative space as the topic suits. Optional fields are optional, not slots to fill. Use different slide layouts when the story calls for them. Keep fonts readable (body >=17pt, sources >=10pt). "
-        "Layout ruler: card text starts >=0.14in below card top and y+h <= card bottom-0.14in; keep >=0.08in between text blocks. Estimate wrapped height: at 18pt about 0.34in per line+0.12in; 24pt 0.44in per line+0.12in; 36pt 0.66in per line+0.12in. Long names/source lines wrap; leave slack under two-line captions. "
-        "Use only supplied evidence and image asset IDs. Do not infer audited totals, measured growth/trends, or unsupported superlatives from trade projections. "
-        "Label estimates on relevant slides; include complete source URLs on a sources slide. Photos are illustrative, not proof of figures. "
-        "If requested format isn't PPTX/PDF return {\"unsupported_format\":\"...\"}.\n"
-        "BRIEF:\n"+brief+"\nEVIDENCE:\n"+reference+"\nASSETS:\n"+
-        json.dumps([{'id':a['id'],'description':a.get('description','')} for a in assets],ensure_ascii=False))
+    return ("You are the presentation creative director, not the layout calculator. Choose a distinctive visual narrative, varied slide archetypes, story, wording, palette and imagery. "
+      "Return one compact JSON design intent with palette [{name,hex}] and 4-6 slides, using the response schema. No positions, dimensions or font sizes: deterministic code computes those. "
+      "Archetypes: title_hero (cover title/subtitle/body, optional image); big_stat (one item with value/heading, optional image and body); "
+      "card_grid (2-4 items, heading/value/text); split_image_text (image required, title/subtitle/body, image_side left or right); "
+      "quote (quote/subtitle); timeline (2-4 heading/text items); closing (body or 1-3 source items with heading/text). "
+      "Every slide has title, subtitle, body, quote, items, image_asset, image_side, background, ink, accent, card and source; use null/empty strings/arrays when unused. "
+      "Choose archetypes for story, not a fixed template; vary rhythm and composition. Use card_grid for comparable estimates, big_stat for hero number, split_image_text for people/places, closing for source URLs. "
+      "Text concise: title <=10 words, body <=35, card heading <=8, card text <=22, source note <=18 words. Long URL belongs in closing source item, not card/footer. "
+      "Use only evidence below. Trade projections must be labeled, never presented as audited totals or measured growth. Complete source URLs copied verbatim. "
+      "Photos illustrative, not proof of a figure. Never invent image asset IDs. This engine produces PPTX/PDF only; do not invent unsupported output formats.\n"
+      "BRIEF:\n"+brief+"\nEVIDENCE:\n"+reference+"\nASSETS:\n"+
+      json.dumps([{'id':a['id'],'description':a.get('description','')} for a in assets],ensure_ascii=False))
 
 
 def color(v,palette):
@@ -241,7 +224,7 @@ def audit_rendered_text(plan,pdf):
     return issues
 
 def critic_prompt(plan,images):
-    instruction=('Review rendered slides for both objective release defects (overflow, clipping, overlap, missing content, unreadable type, low contrast) AND design sense: clear hierarchy, intentional composition, balanced whitespace, fitting typography, image treatment and a coherent rhythm across slides. A sparse slide with a purposeful focal point is fine; repeated bare text with a half-empty canvas is not. Judge the actual deck against its brief, not personal color taste. Fact verification happens in a later phase; do not certify factual accuracy here. If no objective defect exists return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"precise visible defect"}],"patches":[{"slide":1,"element":2,"changes":{"x":1.1,"h":1.2}}]}. Slide indices are 1-based, element indices 0-based; only patch an index you can verify in the plan. Patch only exact defective elements. Current plan: '+json.dumps(plan,ensure_ascii=False))
+    instruction=('Review rendered slides for both objective release defects (overflow, clipping, overlap, missing content, unreadable type, low contrast) AND design sense: clear hierarchy, intentional composition, balanced whitespace, fitting typography, image treatment and a coherent rhythm across slides. A sparse slide with a purposeful focal point is fine; repeated bare text with a half-empty canvas is not. Judge the actual deck against its brief, not personal color taste. Fact verification happens in a later phase; do not certify factual accuracy here. If no release defect or serious design issue exists return {"approved":true,"issues":[]}. Otherwise return {"approved":false,"issues":[{"slide":1,"problem":"precise visible defect"}],"patches":[{"slide":1,"element":2,"changes":{"x":1.1,"h":1.2}}]}. Slide indices are 1-based, element indices 0-based; only patch an index you can verify in the plan. Patch only exact defective elements. Current plan: '+json.dumps(plan,ensure_ascii=False))
     content=[{'type':'text','text':instruction}]
     for f in images:
         b64=base64.b64encode(f.read_bytes()).decode();content.append({'type':'image_url','image_url':{'url':'data:image/png;base64,'+b64,'detail':'low'}})
@@ -329,12 +312,14 @@ def run(args):
     for a in assets.values():
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=9500 if args.model.endswith(':free') else 7000,raw_path=out/'raw-planner.json',response_format=planner_response_format() if args.model=='google/gemini-2.5-flash' else None)
-    plan=normalize_plan_schema(parse_json(response))
+    response,usage=chat([{'role':'system','content':'You are a creative lead. Choose design intent and content, never coordinates. Return JSON only.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=9500 if args.model.endswith(':free') else 7000,raw_path=out/'raw-planner.json',response_format=planner_response_format() if args.model=='google/gemini-2.5-flash' else None)
+    intent=parse_json(response)
+    (out/'intent-0.json').write_text(json.dumps(intent,ensure_ascii=False,indent=2))
+    plan,composition_changes=compose(intent,assets)
     bad_urls=validate_source_urls(plan,reference)
     if bad_urls:raise ValueError('source URLs not copied verbatim: '+json.dumps(bad_urls))
     (out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
-    log=[{'stage':'planner','model':args.model,'usage':usage}]
+    log=[{'stage':'planner','model':args.model,'usage':usage,'archetype_layout_changes':composition_changes}]
     for iteration in range(args.max_revisions+1):
         plan=prepare(plan,out,iteration,args.model,args.api_url,log,max_patches=0 if args.max_revisions==0 else 3)
         (out/f'repaired-plan-{iteration}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
@@ -352,7 +337,7 @@ def run(args):
         result=parse_json(raw);log.append({'stage':'critic','model':args.vision_model,'iteration':iteration,'usage':usage,'issues':result.get('issues',[])})
         (out/f'critique-{iteration}.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
         if result.get('approved') is True:
-            (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'model-inspected all slide previews; review PDF as final viewer check'},indent=2));print('Approved',pptx,pdf);return 0
+            (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'model-inspected all slide previews; human visual review of exported PDF still required'},indent=2));print('Approved',pptx,pdf);return 0
         if iteration>=args.max_revisions:break
         if not result.get('patches'):raise ValueError('critic rejected without targeted patches')
         plan=apply_patches(plan,result['patches']);(out/f'plan-{iteration+1}.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
