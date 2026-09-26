@@ -15,7 +15,7 @@ from layout import repair,validate
 API='https://openrouter.ai/api/v1/chat/completions'
 MAX_OUTPUT_TOKENS=6500
 
-def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS):
+def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS,raw_path=None):
     key=os.environ.get('OPENROUTER_API_KEY','')
     if not key:raise RuntimeError('OPENROUTER_API_KEY not set; provide it in the VPS process environment, not on the command line')
     body=json.dumps({'model':model,'messages':messages,'temperature':.5,'max_tokens':max_tokens},ensure_ascii=False).encode()
@@ -24,6 +24,9 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS):
     for attempt in range(3):
         try:
             with urllib.request.urlopen(req,timeout=100) as res: ans=json.load(res)
+            if raw_path:
+                # Never persist request headers, environment, or API keys.
+                Path(raw_path).write_text(json.dumps({'model':model,'message':ans['choices'][0]['message'],'finish_reason':ans['choices'][0].get('finish_reason'),'usage':ans.get('usage',{})},ensure_ascii=False,indent=2))
             return ans['choices'][0]['message']['content'],ans.get('usage',{})
         except Exception as exc:
             last=exc
@@ -33,7 +36,18 @@ def chat(messages,model,base_url=API,max_tokens=MAX_OUTPUT_TOKENS):
 def parse_json(s):
     if not isinstance(s,str):raise ValueError('model response was not text')
     s=re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$','',s.strip())
-    return json.loads(s)
+    try:return json.loads(s)
+    except json.JSONDecodeError:
+        # Bounded salvage: drop explanatory prefixes/suffixes around a complete
+        # object; never invent closing braces or silently change content.
+        dec=json.JSONDecoder()
+        for match in list(re.finditer(r'\{',s))[:5]:
+            try:
+                obj,end=dec.raw_decode(s[match.start():])
+                if isinstance(obj,dict):return obj
+            except json.JSONDecodeError:continue
+        raise
+
 
 def prompt(brief,assets,reference):
     return '''You are a presentation creative director. Think through purpose, audience, story, visual metaphor, source reliability, and the reference design. You decide everything creative at runtime. The renderer only implements your design geometry. Respond with ONE JSON object, no markdown.
@@ -133,7 +147,7 @@ def run(args):
     for a in assets.values():
         if not Path(a['file']).is_file():raise FileNotFoundError(a['file'])
     out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
-    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url)
+    response,usage=chat([{'role':'system','content':'You are a creative lead. Output one JSON plan only. Coordinates are top-left; x+w<=13.333, y+h<=7.5. Keep text boxes large enough for every word. Maximum 8 slides for this brief.'},{'role':'user','content':prompt(brief,manifest,reference)}],args.model,args.api_url,max_tokens=12000,raw_path=out/'raw-planner.json')
     plan=parse_json(response);(out/'plan-0.json').write_text(json.dumps(plan,ensure_ascii=False,indent=2))
     log=[{'stage':'planner','model':args.model,'usage':usage}]
     for iteration in range(args.max_revisions+1):
@@ -144,7 +158,7 @@ def run(args):
         if not args.vision_model:
             (out/'run-log.json').write_text(json.dumps({'iterations':log,'visual_qa':'UNVERIFIED: no vision model supplied; human review required'},indent=2))
             print('Generated but visually unverified; supply --vision-model to run critic loop.');return 2
-        raw,usage=chat([{'role':'system','content':'You are a rigorous visual presentation critic. Return strict JSON. Diagnose actual rendered pages and offer only targeted element patches.'},{'role':'user','content':critic_prompt(plan,images)}],args.vision_model,args.api_url,max_tokens=3500)
+        raw,usage=chat([{'role':'system','content':'You are a rigorous visual presentation critic. Return strict JSON. Diagnose actual rendered pages and offer only targeted element patches.'},{'role':'user','content':critic_prompt(plan,images)}],args.vision_model,args.api_url,max_tokens=3500,raw_path=out/f'raw-critic-{iteration}.json')
         result=parse_json(raw);log.append({'stage':'critic','model':args.vision_model,'iteration':iteration,'usage':usage,'issues':result.get('issues',[])})
         (out/f'critique-{iteration}.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
         if result.get('approved') is True:

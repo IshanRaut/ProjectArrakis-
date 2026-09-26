@@ -26,3 +26,11 @@ class LayoutTests(unittest.TestCase):
         self.assertIn('bounds',kinds);self.assertIn('text_overlap',kinds)
 
 if __name__=='__main__':unittest.main()
+
+class ParsingTests(unittest.TestCase):
+    def test_salvage_complete_json_after_preface(self):
+        import engine
+        self.assertEqual(engine.parse_json('Reasoning: done. {"slides": []} trailing'),{'slides':[]})
+    def test_refuse_truncated_json(self):
+        import engine
+        with self.assertRaises(ValueError):engine.parse_json('{"slides": [')
